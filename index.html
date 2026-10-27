@@ -125,7 +125,26 @@ footer{color:var(--muted);text-align:center;padding:20px;font-size:.85rem}
 
 </main>
 <footer id="footerText"></footer>
-<div id="firebaseStatus" class="wrap" style="padding-bottom:14px"><div class="notice"><strong>Firebase bağlantısı:</strong> <span id="firebaseStatusText">Bağlantı hazırlanıyor…</span></div></div>
+<div id="firebaseStatus" class="wrap" style="padding-bottom:14px">
+ <div class="notice"><strong>Firebase:</strong> <span id="firebaseStatusText">Bağlantı hazırlanıyor…</span></div>
+ <section class="card" style="margin-top:12px;padding:14px">
+  <h2 style="margin-top:0">🔐 Hesap girişi ve cihazlar arası eşitleme</h2>
+  <p class="small">Öğrenciler kendi e-posta ve şifreleriyle giriş yapar. Yönetici hesabı yetkisi tanımlı UID ile kontrol edilir. Giriş yapınca kayıtlar Firestore ile eşitlenir.</p>
+  <div class="controls" id="authFields">
+   <input id="authEmail" type="email" autocomplete="username" placeholder="E-posta" style="min-width:220px">
+   <input id="authPassword" type="password" autocomplete="current-password" placeholder="Şifre" style="min-width:180px">
+   <button id="authLogin" type="button">Giriş yap</button>
+   <button id="authRegister" type="button" class="secondary">Öğrenci hesabı oluştur</button>
+   <button id="authLogout" type="button" class="secondary" hidden>Çıkış yap</button>
+  </div>
+  <p id="authUserText" class="small">Giriş yapılmadı.</p>
+  <div id="cloudAdminBox" hidden>
+   <h3>Buluttaki öğrenci hesapları</h3>
+   <div class="controls"><button id="cloudRefresh" type="button" class="secondary">Listeyi yenile</button><select id="cloudAccounts" style="min-width:240px"><option value="">Öğrenci hesabı seç…</option></select><button id="cloudLoad" type="button">Seçili hesabı yükle</button><button id="cloudBack" type="button" class="secondary">Kendi hesabıma dön</button></div>
+   <p class="small">Hesap listesi sadece yöneticiye görünür. Seçilen hesaba yapılan kayıtlar o öğrencinin bulut kaydına yazılır.</p>
+  </div>
+ </section>
+</div>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
@@ -159,6 +178,82 @@ try {
   const status=$('firebaseStatusText');
   if(status) status.textContent='Firebase başlatılamadı: '+firebaseError.message;
   console.error(firebaseError);
+}
+const ADMIN_UID='5pbxm0qkESVCQzLZCLEbT8hIi6A3';
+let currentUser=null, isAdmin=false, cloudTargetUid=null, cloudSyncTimer=null, cloudApplying=false;
+const cloudStatus=(msg)=>{const el=$('firebaseStatusText');if(el)el.textContent=msg;};
+function cloudDoc(uid){return firestore.collection('accounts').doc(uid);}
+function cloudSnapshot(){return {state,proofs,cfg,studentKey:activeStudentKey||'',name:(state.name||'').trim()||'Öğrenci',email:currentUser?.email||'',updatedAt:firebase.firestore.FieldValue.serverTimestamp(),updatedAtClient:new Date().toISOString()};}
+async function cloudSaveNow(){
+ if(!currentUser||!firestore||!cloudTargetUid||cloudApplying)return;
+ try{await cloudDoc(cloudTargetUid).set(cloudSnapshot(),{merge:true});cloudStatus('Bulut eşitlemesi tamamlandı • '+(isAdmin&&cloudTargetUid!==currentUser.uid?'Seçili öğrenci hesabı':'Bu hesap'));}
+ catch(e){cloudStatus('Buluta kaydedilemedi: '+(e.code||e.message));console.error('Firestore save error',e);}
+}
+function scheduleCloudSave(){
+ if(!currentUser||!firestore||!cloudTargetUid||cloudApplying)return;
+ if(cloudSyncTimer)clearTimeout(cloudSyncTimer);
+ cloudStatus('Değişiklikler buluta kaydediliyor…');
+ cloudSyncTimer=setTimeout(()=>cloudSaveNow(),800);
+}
+async function cloudLoad(uid){
+ const snap=await cloudDoc(uid).get();
+ if(!snap.exists){
+  cloudTargetUid=uid;
+  // İlk giriş yapan öğrenciye bu cihazda açık kalmış başka bir hesabın verisini taşımayız.
+  if(uid!==ADMIN_UID){state=normState(null);proofs=normProofs(null);cfg=defaultConfig();activeStudentKey='';localStorage.setItem(K_STATE,JSON.stringify(state));localStorage.setItem(K_PROOF,JSON.stringify(proofs));localStorage.setItem(K_CFG,JSON.stringify(cfg));localStorage.removeItem('satranc_active_student_key_v1');renderStudent();renderProofs();}
+  cloudStatus('Yeni bulut kaydı hazırlanıyor…');await cloudSaveNow();return false;
+ }
+ const d=snap.data();cloudApplying=true;
+ try{
+  if(d.cfg&&typeof d.cfg==='object'){cfg=d.cfg;localStorage.setItem(K_CFG,JSON.stringify(cfg));}
+  if(d.state&&typeof d.state==='object'){state=normState(d.state);localStorage.setItem(K_STATE,JSON.stringify(state));}
+  if(d.proofs&&typeof d.proofs==='object'){proofs=normProofs(d.proofs);localStorage.setItem(K_PROOF,JSON.stringify(proofs));}
+  activeStudentKey=d.studentKey||'';if(activeStudentKey)localStorage.setItem('satranc_active_student_key_v1',activeStudentKey);
+  cloudTargetUid=uid;renderStudent();renderProofs();if(!$('adminPanel').hidden)renderAdmin();
+ }finally{cloudApplying=false;}
+ cloudStatus('Bulut kaydı yüklendi • '+(d.name||d.email||uid));return true;
+}
+async function refreshCloudAccounts(){
+ if(!isAdmin||!firestore)return;
+ const sel=$('cloudAccounts');sel.innerHTML='<option value="">Yükleniyor…</option>';
+ try{
+  const snap=await firestore.collection('accounts').get();sel.innerHTML='<option value="">Öğrenci hesabı seç…</option>';
+  snap.forEach(doc=>{if(doc.id===currentUser.uid)return;const d=doc.data()||{},o=document.createElement('option');o.value=doc.id;o.textContent=(d.name||d.email||'Öğrenci')+' — '+doc.id.slice(0,8);sel.appendChild(o);});
+  if(sel.options.length===1)sel.innerHTML='<option value="">Henüz öğrenci bulut kaydı yok</option>';
+ }catch(e){sel.innerHTML='<option value="">Liste alınamadı</option>';cloudStatus('Hesap listesi alınamadı: '+(e.code||e.message));}
+}
+async function handleAuthUser(user){
+ currentUser=user||null;isAdmin=!!user&&user.uid===ADMIN_UID;cloudTargetUid=user?user.uid:null;
+ const logout=$('authLogout'), login=$('authLogin'), reg=$('authRegister');
+ if(logout)logout.hidden=!user;if(login)login.hidden=!!user;if(reg)reg.hidden=!!user;
+ if($('authEmail'))$('authEmail').disabled=!!user;if($('authPassword'))$('authPassword').disabled=!!user;
+ $('authUserText').textContent=user?('Giriş: '+(user.email||user.uid)+(isAdmin?' • YÖNETİCİ':' • ÖĞRENCİ')):'Giriş yapılmadı.';
+ $('cloudAdminBox').hidden=!isAdmin;
+ $('adminLogin').hidden=!!user&&!isAdmin;
+ if(!user){cloudStatus('Giriş yapılmadı. Bu cihazdaki yerel kayıtlar kullanılabilir.');return;}
+ try{
+  await cloudLoad(user.uid);
+  if(isAdmin)await refreshCloudAccounts();
+  cloudStatus('Bağlandı: '+(isAdmin?'Yönetici':'Öğrenci')+' • cihazlar arası eşitleme açık');
+ }catch(e){cloudStatus('Bulut bağlantısı başarısız: '+(e.code||e.message));console.error(e);}
+}
+function initFirebaseAuthUI(){
+ if(!firebaseAuth||!firestore){cloudStatus('Firebase başlatılamadı. İnternet, Authentication ve Firestore ayarlarını kontrol edin.');return;}
+ $('authLogin').addEventListener('click',async()=>{
+  const email=$('authEmail').value.trim(),password=$('authPassword').value;
+  if(!email||!password){alert('E-posta ve şifreyi gir.');return;}
+  try{await firebaseAuth.signInWithEmailAndPassword(email,password);}catch(e){alert('Giriş başarısız: '+(e.code||e.message));}
+ });
+ $('authRegister').addEventListener('click',async()=>{
+  const email=$('authEmail').value.trim(),password=$('authPassword').value;
+  if(!email||password.length<6){alert('Geçerli e-posta gir ve en az 6 karakterli şifre belirle.');return;}
+  try{await firebaseAuth.createUserWithEmailAndPassword(email,password);}catch(e){alert('Hesap oluşturulamadı: '+(e.code||e.message));}
+ });
+ $('authLogout').addEventListener('click',()=>firebaseAuth.signOut());
+ $('cloudRefresh').addEventListener('click',refreshCloudAccounts);
+ $('cloudLoad').addEventListener('click',async()=>{const id=$('cloudAccounts').value;if(!id)return alert('Önce öğrenci hesabı seç.');if(!confirm('Seçili öğrencinin bulut verisi yüklensin mi? Mevcut ekrandaki son değişiklikler önce kaydedilecek.'))return;await cloudSaveNow();await cloudLoad(id);});
+ $('cloudBack').addEventListener('click',async()=>{if(!currentUser)return;await cloudSaveNow();await cloudLoad(currentUser.uid);});
+ firebaseAuth.onAuthStateChanged(handleAuthUser);
 }
 const DAYS=['Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi','Pazar'];
 const K_STATE='satranc_seviye1_program_v1',K_PROOF='satranc_weekly_proofs_v1',K_CFG='satranc_config_v2';
@@ -260,9 +355,9 @@ let cfg=loadCfg(),state,proofs,adminWeek=0,adminDay=0,activeStudentKey=localStor
 try{state=normState(JSON.parse(localStorage.getItem(K_STATE)||'null'));}catch(e){state=normState(null);}
 try{proofs=normProofs(JSON.parse(localStorage.getItem(K_PROOF)||'null'));}catch(e){proofs=normProofs(null);}
 const quotaErr='Tarayıcı hafızasına kaydedilemedi (hafıza dolmuş olabilir). Daha küçük/az görsel deneyin veya eski kanıtları silin.';
-function saveCfg(){try{localStorage.setItem(K_CFG,JSON.stringify(cfg));}catch(e){alert(quotaErr);return;}scheduleStudentSave();}
-function saveState(){try{localStorage.setItem(K_STATE,JSON.stringify(state));}catch(e){alert(quotaErr);return;}scheduleStudentSave();}
-function saveProofs(){try{localStorage.setItem(K_PROOF,JSON.stringify(proofs));}catch(e){alert(quotaErr);return;}scheduleStudentSave();}
+function saveCfg(){try{localStorage.setItem(K_CFG,JSON.stringify(cfg));}catch(e){alert(quotaErr);return;}scheduleStudentSave();scheduleCloudSave();}
+function saveState(){try{localStorage.setItem(K_STATE,JSON.stringify(state));}catch(e){alert(quotaErr);return;}scheduleStudentSave();scheduleCloudSave();}
+function saveProofs(){try{localStorage.setItem(K_PROOF,JSON.stringify(proofs));}catch(e){alert(quotaErr);return;}scheduleStudentSave();scheduleCloudSave();}
 /* ---------- Yardımcılar ---------- */
 const CW=wi=>cfg.weeks[wi];
 function assignedCats(w){return (w.categories||[]).filter(c=>c.assigned!==false);}
@@ -577,7 +672,7 @@ $('resetAll').addEventListener('click',async()=>{if(!confirm('DİKKAT: Bu taray�
 $('addImages').addEventListener('click',async()=>{await addImages([...$('puzzleImages').files],state.activeWeek);$('puzzleImages').value='';});
 $('adminLogin').addEventListener('click',adminLogin);
 $('closeAdmin').addEventListener('click',()=>{$('adminPanel').hidden=true;});
-renderStudent();renderProofs();
+renderStudent();renderProofs();initFirebaseAuthUI();
 })();
 </script>
 </body>
