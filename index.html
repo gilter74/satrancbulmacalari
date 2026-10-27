@@ -186,7 +186,7 @@ function cloudDoc(uid){return firestore.collection('accounts').doc(uid);}
 // Firestore disallows arrays nested inside other arrays. Encode every array as a
 // tagged object before saving, then restore it when loading. This preserves the
 // application's original data structure without changing the UI/state model.
-const FIRESTORE_ARRAY_TAG='__rockjazz_firestore_array_v1__';
+const FIRESTORE_ARRAY_TAG='_rockjazz_firestore_array_v1_';
 function encodeFirestoreArrays(value){
  if(Array.isArray(value)) return {[FIRESTORE_ARRAY_TAG]:value.map(encodeFirestoreArrays)};
  if(value&&typeof value==='object'){
