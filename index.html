@@ -29,7 +29,7 @@ button:focus,input:focus,select:focus,textarea:focus{outline:3px solid #8bb8ff;o
 .puzzle-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}.puzzle{border:1px solid var(--line);padding:12px;border-radius:12px}.puzzle label{display:block;font-weight:700;margin-bottom:7px}.puzzle input[type=number]{width:90px}
 .status{padding:12px;border-radius:10px;font-weight:700;margin-top:12px}.status.good{background:#e9f8ef;color:#11633f}.status.warn{background:#fff4df;color:#8a4b00}.status.bad{background:#fff0ee;color:#a32319}
 .actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:14px}.surprise{border:1px dashed #c69a2b;background:#fff9e8;border-radius:12px;padding:12px;margin-top:12px}.surprise h4{margin:0 0 6px;color:#7b5600}.surprise-checks{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:6px;margin-top:8px}.surprise-checks label{font-size:.9rem}.teacher-box{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}.teacher-box textarea{width:100%;min-height:100px}.report{white-space:pre-wrap;background:#f7f9fc;border:1px dashed #9aabc0;padding:14px;border-radius:10px;font-size:.92rem}
-.full{display:block;width:100%;margin:5px 0}.auth-gated{display:none!important}.auth-ready main{display:block}.auth-required-note{display:none}
+.full{display:block;width:100%;margin:5px 0}
 details.sec{border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin:12px 0;background:#fcfdff}details.sec>summary{cursor:pointer;font-weight:800;color:var(--navy);font-size:1.05rem}
 .admin-panel .puzzle input[type=number]{width:110px;display:block}
 footer{color:var(--muted);text-align:center;padding:20px;font-size:.85rem}
@@ -41,7 +41,7 @@ footer{color:var(--muted);text-align:center;padding:20px;font-size:.85rem}
 <h1 id="hTitle"></h1>
 <p id="hSub"></p>
 </div></header>
-<main class="wrap" style="display:none">
+<main class="wrap">
 <section class="panel">
 <h2>👤 Öğrenci ve çalışma ayarları</h2>
 <div class="controls">
@@ -50,7 +50,7 @@ footer{color:var(--muted);text-align:center;padding:20px;font-size:.85rem}
 <button id="saveSettings" class="secondary">Bilgileri kaydet</button>
 <button id="resetAll" class="danger">Tüm uygulama verilerini sil</button>
 </div>
-<p class="small">Öğrenci modu kendi çalışma ilerlemesini gösterir. Yönetim ayarları yalnızca Firebase yönetici hesabında açılır.</p>
+<p class="small">Bu sürüm verileri bu tarayıcıda saklar. Başka cihazlarla ortak kullanım için ayrıca sunucu/veritabanı kurulmalıdır.</p>
 <div class="notice"><strong>Çalışma kuralı:</strong> <span id="ruleText"></span></div>
 </section>
 
@@ -140,7 +140,7 @@ footer{color:var(--muted);text-align:center;padding:20px;font-size:.85rem}
   <p id="authUserText" class="small">Giriş yapılmadı.</p>
   <div id="cloudAdminBox" hidden>
    <h3>Buluttaki öğrenci hesapları</h3>
-   <div class="controls"><button id="cloudRefresh" type="button" class="secondary">Listeyi yenile</button><select id="cloudAccounts" style="min-width:240px"><option value="">Öğrenci hesabı seç…</option></select><button id="cloudLoad" type="button">Seçili hesabı yükle</button><button id="cloudBack" type="button" class="secondary">Kendi hesabıma dön</button></div>
+   <div class="controls"><button id="cloudRefresh" type="button" class="secondary">Listeyi yenile</button><select id="cloudAccounts" style="min-width:240px"><option value="">Öğrenci hesabı seç…</option></select><button id="cloudLoad" type="button">Seçili hesabı yükle</button><button id="cloudDeleteStudent" type="button" class="danger">Öğrenciyi sil</button><button id="cloudBack" type="button" class="secondary">Kendi hesabıma dön</button></div>
    <p class="small">Hesap listesi sadece yöneticiye görünür. Seçilen hesaba yapılan kayıtlar o öğrencinin bulut kaydına yazılır.</p>
   </div>
  </section>
@@ -183,52 +183,29 @@ const ADMIN_UID='5pbxm0qkESVCQzLZCLEbT8hIi6A3';
 let currentUser=null, isAdmin=false, cloudTargetUid=null, cloudSyncTimer=null, cloudApplying=false;
 const cloudStatus=(msg)=>{const el=$('firebaseStatusText');if(el)el.textContent=msg;};
 function cloudDoc(uid){return firestore.collection('accounts').doc(uid);}
-// Firestore disallows arrays nested inside other arrays. Encode every array as a
-// tagged object before saving, then restore it when loading. This preserves the
-// application's original data structure without changing the UI/state model.
+// Firestore disallows arrays nested inside other arrays; preserve app data using a tagged wrapper.
 const FIRESTORE_ARRAY_TAG='_rockjazz_firestore_array_v1_';
 function encodeFirestoreArrays(value){
- if(Array.isArray(value)) return {[FIRESTORE_ARRAY_TAG]:value.map(encodeFirestoreArrays)};
- if(value&&typeof value==='object'){
-  const out={};
-  for(const [k,v] of Object.entries(value)) out[k]=encodeFirestoreArrays(v);
-  return out;
- }
+ if(Array.isArray(value))return {[FIRESTORE_ARRAY_TAG]:value.map(encodeFirestoreArrays)};
+ if(value&&typeof value==='object'){const out={};for(const [k,v] of Object.entries(value))out[k]=encodeFirestoreArrays(v);return out;}
  return value;
 }
 function decodeFirestoreArrays(value){
- if(Array.isArray(value)) return value.map(decodeFirestoreArrays);
+ if(Array.isArray(value))return value.map(decodeFirestoreArrays);
  if(value&&typeof value==='object'){
-  if(Object.keys(value).length===1&&Array.isArray(value[FIRESTORE_ARRAY_TAG])) return value[FIRESTORE_ARRAY_TAG].map(decodeFirestoreArrays);
-  const out={};
-  for(const [k,v] of Object.entries(value)) out[k]=decodeFirestoreArrays(v);
-  return out;
+  if(Object.keys(value).length===1&&Array.isArray(value[FIRESTORE_ARRAY_TAG]))return value[FIRESTORE_ARRAY_TAG].map(decodeFirestoreArrays);
+  const out={};for(const [k,v] of Object.entries(value))out[k]=decodeFirestoreArrays(v);return out;
  }
  return value;
 }
-function cloudSnapshot(){
- // Firestore belgeleri 1 MiB sınırını aşmamalı. Ekran görüntülerinin base64 verileri
- // tek belgeye yazılmaz; oyun bağlantıları ve öğrenci ilerlemesi buluta eşitlenir.
- const cloudProofs={weeks:{}};
- for(const [k,w] of Object.entries((proofs&&proofs.weeks)||{})){
-   cloudProofs.weeks[k]={images:(Array.isArray(w.images)?w.images:[]).map(im=>({topic:im.topic||'Genel taktik',difficulty:im.difficulty||'',name:im.name||''})),games:Array.isArray(w.games)?w.games:[]};
- }
- return {state,cfg,proofs:cloudProofs,studentKey:activeStudentKey||'',name:(state.name||'').trim()||'Öğrenci',email:currentUser?.email||'',updatedAt:firebase.firestore.FieldValue.serverTimestamp(),updatedAtClient:new Date().toISOString()};
-}
+function cloudSnapshot(){return {state,proofs,cfg,studentKey:activeStudentKey||'',name:(state.name||'').trim()||'Öğrenci',email:currentUser?.email||'',updatedAt:firebase.firestore.FieldValue.serverTimestamp(),updatedAtClient:new Date().toISOString()};}
 async function cloudSaveNow(){
  if(!currentUser||!firestore||!cloudTargetUid||cloudApplying)return;
  try{
-  const payload=cloudSnapshot();
-  // Remove undefined/non-serializable nested values before sending to Firestore.
-  const stamp=payload.updatedAt;delete payload.updatedAt;
+  const payload=cloudSnapshot(),stamp=payload.updatedAt;delete payload.updatedAt;
   const clean=JSON.parse(JSON.stringify(payload));
-  // Transform only application data; keep the Firestore server timestamp intact.
-  clean.state=encodeFirestoreArrays(clean.state);
-  clean.cfg=encodeFirestoreArrays(clean.cfg);
-  clean.proofs=encodeFirestoreArrays(clean.proofs);
-  clean.updatedAt=stamp;
-  await cloudDoc(cloudTargetUid).set(clean,{merge:true});
-  cloudStatus('Bulut eşitlemesi tamamlandı • '+(isAdmin&&cloudTargetUid!==currentUser.uid?'Seçili öğrenci hesabı':'Bu hesap'));
+  clean.state=encodeFirestoreArrays(clean.state);clean.cfg=encodeFirestoreArrays(clean.cfg);clean.proofs=encodeFirestoreArrays(clean.proofs);clean.updatedAt=stamp;
+  await cloudDoc(cloudTargetUid).set(clean,{merge:true});cloudStatus('Bulut eşitlemesi tamamlandı • '+(isAdmin&&cloudTargetUid!==currentUser.uid?'Seçili öğrenci hesabı':'Bu hesap'));
  }
  catch(e){cloudStatus('Buluta kaydedilemedi: '+(e.code||e.message));console.error('Firestore save error',e);}
 }
@@ -246,25 +223,39 @@ async function cloudLoad(uid){
   if(uid!==ADMIN_UID){state=normState(null);proofs=normProofs(null);cfg=defaultConfig();activeStudentKey='';localStorage.setItem(K_STATE,JSON.stringify(state));localStorage.setItem(K_PROOF,JSON.stringify(proofs));localStorage.setItem(K_CFG,JSON.stringify(cfg));localStorage.removeItem('satranc_active_student_key_v1');renderStudent();renderProofs();}
   cloudStatus('Yeni bulut kaydı hazırlanıyor…');await cloudSaveNow();return false;
  }
- const raw=snap.data();
- const d={...raw,cfg:decodeFirestoreArrays(raw.cfg),state:decodeFirestoreArrays(raw.state),proofs:decodeFirestoreArrays(raw.proofs)};
- cloudApplying=true;
+ const raw=snap.data(),d={...raw,state:decodeFirestoreArrays(raw.state),cfg:decodeFirestoreArrays(raw.cfg),proofs:decodeFirestoreArrays(raw.proofs)};cloudApplying=true;
  try{
   if(d.cfg&&typeof d.cfg==='object'){cfg=d.cfg;localStorage.setItem(K_CFG,JSON.stringify(cfg));}
   if(d.state&&typeof d.state==='object'){state=normState(d.state);localStorage.setItem(K_STATE,JSON.stringify(state));}
-  if(d.proofs&&typeof d.proofs==='object'){
-    const incoming=normProofs(d.proofs);
-    // Bulut belgesinde görüntü dosyası bulunmaz; bu cihazdaki mevcut görseller korunur.
-    for(const [wk,wp] of Object.entries(incoming.weeks)){
-      const local=(proofs&&proofs.weeks&&proofs.weeks[wk])||{images:[],games:[]};
-      wp.images=(local.images||[]).filter(im=>im&&im.src);
-    }
-    proofs=incoming;localStorage.setItem(K_PROOF,JSON.stringify(proofs));
-  }
+  if(d.proofs&&typeof d.proofs==='object'){proofs=normProofs(d.proofs);localStorage.setItem(K_PROOF,JSON.stringify(proofs));}
   activeStudentKey=d.studentKey||'';if(activeStudentKey)localStorage.setItem('satranc_active_student_key_v1',activeStudentKey);
   cloudTargetUid=uid;renderStudent();renderProofs();if(!$('adminPanel').hidden)renderAdmin();
  }finally{cloudApplying=false;}
  cloudStatus('Bulut kaydı yüklendi • '+(d.name||d.email||uid));return true;
+}
+async function deleteSelectedStudent(){
+ if(!isAdmin||!currentUser||currentUser.uid!==ADMIN_UID||!firestore){cloudStatus('Bu işlem yalnızca yönetici tarafından yapılabilir.');return;}
+ const sel=$('cloudAccounts'),studentUid=sel?.value;
+ if(!studentUid){alert('Önce silinecek öğrenci hesabını seç.');return;}
+ if(studentUid===ADMIN_UID||studentUid===currentUser.uid){alert('Yönetici hesabı silinemez.');return;}
+ const label=sel.options[sel.selectedIndex]?.textContent||studentUid;
+ const ok=window.confirm('“'+label+'” öğrencisinin bulut çalışma kaydı kalıcı olarak silinsin mi? Bu işlem geri alınamaz.\n\nÖnemli: Bu işlem Firebase giriş hesabını silmez; yalnızca accounts belgesini siler.');
+ if(!ok)return;
+ const btn=$('cloudDeleteStudent');if(btn)btn.disabled=true;
+ try{
+  if(cloudSyncTimer){clearTimeout(cloudSyncTimer);cloudSyncTimer=null;}
+  await cloudDoc(studentUid).delete();
+  if(cloudTargetUid===studentUid){
+   cloudApplying=true;
+   try{state=normState(null);proofs=normProofs(null);cfg=defaultConfig();activeStudentKey='';localStorage.setItem(K_STATE,JSON.stringify(state));localStorage.setItem(K_PROOF,JSON.stringify(proofs));localStorage.setItem(K_CFG,JSON.stringify(cfg));localStorage.removeItem('satranc_active_student_key_v1');renderStudent();renderProofs();}
+   finally{cloudApplying=false;}
+   await cloudLoad(currentUser.uid);
+  }
+  await refreshCloudAccounts();
+  cloudStatus('Öğrencinin Firestore çalışma kaydı silindi. Giriş hesabı ayrıca Firebase Authentication’dan silinmelidir.');
+  alert('Bulut çalışma kaydı silindi.\n\nÖğrencinin giriş hesabı henüz silinmedi. Tamamen kaldırmak için Firebase Console → Authentication → Users bölümünden aynı öğrencinin hesabını ayrıca sil.');
+ }catch(e){cloudStatus('Öğrenci silinemedi: '+(e.code||e.message));alert('Öğrenci kaydı silinemedi: '+(e.code||e.message));console.error('Delete student error',e);}
+ finally{if(btn)btn.disabled=false;}
 }
 async function refreshCloudAccounts(){
  if(!isAdmin||!firestore)return;
@@ -275,35 +266,19 @@ async function refreshCloudAccounts(){
   if(sel.options.length===1)sel.innerHTML='<option value="">Henüz öğrenci bulut kaydı yok</option>';
  }catch(e){sel.innerHTML='<option value="">Liste alınamadı</option>';cloudStatus('Hesap listesi alınamadı: '+(e.code||e.message));}
 }
-function applyRoleVisibility(user,admin){
- const main=document.querySelector('main.wrap');
- if(main)main.style.display=user?'':'none';
- document.body.classList.toggle('auth-ready',!!user);
- // Admin-only controls are hidden unless the signed-in Firebase UID is the configured admin.
- $('adminPanel').hidden=true;
- $('adminLogin').hidden=!admin;
- $('resetAll').hidden=!admin;
- $('cloudAdminBox').hidden=!admin;
- // Student accounts may edit their own study progress, but not global program settings.
- $('studentName').disabled=!admin;
- $('startDate').disabled=!admin;
- $('saveSettings').hidden=!admin;
- const note=document.querySelector('main.wrap > section:first-child .small');
- if(note)note.textContent=admin?'Yönetici modundasın. Öğrenci kayıtları ve program ayarları bu hesaba göre yönetilir.':'Öğrenci modu: yalnızca kendi çalışma ilerlemeni düzenleyebilirsin. Program ayarları ve yönetim araçları kapalıdır.';
-}
 async function handleAuthUser(user){
- currentUser=user||null;isAdmin=!!user&&user.uid===ADMIN_UID;cloudTargetUid=user?user.uid:null;applyRoleVisibility(user,isAdmin);
+ currentUser=user||null;isAdmin=!!user&&user.uid===ADMIN_UID;cloudTargetUid=user?user.uid:null;
  const logout=$('authLogout'), login=$('authLogin'), reg=$('authRegister');
  if(logout)logout.hidden=!user;if(login)login.hidden=!!user;if(reg)reg.hidden=!!user;
  if($('authEmail'))$('authEmail').disabled=!!user;if($('authPassword'))$('authPassword').disabled=!!user;
  $('authUserText').textContent=user?('Giriş: '+(user.email||user.uid)+(isAdmin?' • YÖNETİCİ':' • ÖĞRENCİ')):'Giriş yapılmadı.';
  $('cloudAdminBox').hidden=!isAdmin;
  $('adminLogin').hidden=!!user&&!isAdmin;
- if(!user){cloudStatus('Giriş yapılmadı. Programı kullanmak için hesabınla giriş yap.');return;}
+ if(!user){cloudStatus('Giriş yapılmadı. Bu cihazdaki yerel kayıtlar kullanılabilir.');return;}
  try{
   await cloudLoad(user.uid);
   if(isAdmin)await refreshCloudAccounts();
-  cloudStatus('Firebase hesabı bağlandı: '+(isAdmin?'Yönetici':'Öğrenci')+' • bulut kaydı yüklendi. Görseller bu cihazda kalır; ilerleme ve oyun bağlantıları buluta kaydedilir.');
+  cloudStatus('Bağlandı: '+(isAdmin?'Yönetici':'Öğrenci')+' • cihazlar arası eşitleme açık');
  }catch(e){cloudStatus('Bulut bağlantısı başarısız: '+(e.code||e.message));console.error(e);}
 }
 function initFirebaseAuthUI(){
@@ -320,6 +295,7 @@ function initFirebaseAuthUI(){
  });
  $('authLogout').addEventListener('click',()=>firebaseAuth.signOut());
  $('cloudRefresh').addEventListener('click',refreshCloudAccounts);
+ $('cloudDeleteStudent').addEventListener('click',deleteSelectedStudent);
  $('cloudLoad').addEventListener('click',async()=>{const id=$('cloudAccounts').value;if(!id)return alert('Önce öğrenci hesabı seç.');if(!confirm('Seçili öğrencinin bulut verisi yüklensin mi? Mevcut ekrandaki son değişiklikler önce kaydedilecek.'))return;await cloudSaveNow();await cloudLoad(id);});
  $('cloudBack').addEventListener('click',async()=>{if(!currentUser)return;await cloudSaveNow();await cloudLoad(currentUser.uid);});
  firebaseAuth.onAuthStateChanged(handleAuthUser);
