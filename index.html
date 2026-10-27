@@ -183,6 +183,29 @@ const ADMIN_UID='5pbxm0qkESVCQzLZCLEbT8hIi6A3';
 let currentUser=null, isAdmin=false, cloudTargetUid=null, cloudSyncTimer=null, cloudApplying=false;
 const cloudStatus=(msg)=>{const el=$('firebaseStatusText');if(el)el.textContent=msg;};
 function cloudDoc(uid){return firestore.collection('accounts').doc(uid);}
+// Firestore disallows arrays nested inside other arrays. Encode every array as a
+// tagged object before saving, then restore it when loading. This preserves the
+// application's original data structure without changing the UI/state model.
+const FIRESTORE_ARRAY_TAG='__rockjazz_firestore_array_v1__';
+function encodeFirestoreArrays(value){
+ if(Array.isArray(value)) return {[FIRESTORE_ARRAY_TAG]:value.map(encodeFirestoreArrays)};
+ if(value&&typeof value==='object'){
+  const out={};
+  for(const [k,v] of Object.entries(value)) out[k]=encodeFirestoreArrays(v);
+  return out;
+ }
+ return value;
+}
+function decodeFirestoreArrays(value){
+ if(Array.isArray(value)) return value.map(decodeFirestoreArrays);
+ if(value&&typeof value==='object'){
+  if(Object.keys(value).length===1&&Array.isArray(value[FIRESTORE_ARRAY_TAG])) return value[FIRESTORE_ARRAY_TAG].map(decodeFirestoreArrays);
+  const out={};
+  for(const [k,v] of Object.entries(value)) out[k]=decodeFirestoreArrays(v);
+  return out;
+ }
+ return value;
+}
 function cloudSnapshot(){
  // Firestore belgeleri 1 MiB sınırını aşmamalı. Ekran görüntülerinin base64 verileri
  // tek belgeye yazılmaz; oyun bağlantıları ve öğrenci ilerlemesi buluta eşitlenir.
@@ -199,6 +222,10 @@ async function cloudSaveNow(){
   // Remove undefined/non-serializable nested values before sending to Firestore.
   const stamp=payload.updatedAt;delete payload.updatedAt;
   const clean=JSON.parse(JSON.stringify(payload));
+  // Transform only application data; keep the Firestore server timestamp intact.
+  clean.state=encodeFirestoreArrays(clean.state);
+  clean.cfg=encodeFirestoreArrays(clean.cfg);
+  clean.proofs=encodeFirestoreArrays(clean.proofs);
   clean.updatedAt=stamp;
   await cloudDoc(cloudTargetUid).set(clean,{merge:true});
   cloudStatus('Bulut eşitlemesi tamamlandı • '+(isAdmin&&cloudTargetUid!==currentUser.uid?'Seçili öğrenci hesabı':'Bu hesap'));
@@ -219,7 +246,9 @@ async function cloudLoad(uid){
   if(uid!==ADMIN_UID){state=normState(null);proofs=normProofs(null);cfg=defaultConfig();activeStudentKey='';localStorage.setItem(K_STATE,JSON.stringify(state));localStorage.setItem(K_PROOF,JSON.stringify(proofs));localStorage.setItem(K_CFG,JSON.stringify(cfg));localStorage.removeItem('satranc_active_student_key_v1');renderStudent();renderProofs();}
   cloudStatus('Yeni bulut kaydı hazırlanıyor…');await cloudSaveNow();return false;
  }
- const d=snap.data();cloudApplying=true;
+ const raw=snap.data();
+ const d={...raw,cfg:decodeFirestoreArrays(raw.cfg),state:decodeFirestoreArrays(raw.state),proofs:decodeFirestoreArrays(raw.proofs)};
+ cloudApplying=true;
  try{
   if(d.cfg&&typeof d.cfg==='object'){cfg=d.cfg;localStorage.setItem(K_CFG,JSON.stringify(cfg));}
   if(d.state&&typeof d.state==='object'){state=normState(d.state);localStorage.setItem(K_STATE,JSON.stringify(state));}
