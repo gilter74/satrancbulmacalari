@@ -11,6 +11,10 @@
 <style>
 :root{--navy:#13243a;--blue:#2459a9;--gold:#e9b949;--bg:#f3f6fa;--ink:#1e293b;--muted:#64748b;--green:#147d52;--red:#b42318;--line:#d9e1ec}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+/* Hesap açılmadan veya giriş yapılmadan çalışma uygulaması görünmez. */
+body:not(.auth-ready) main.wrap > section{display:none!important}
+body:not(.auth-ready) #firebaseStatus{min-height:220px}
+body.auth-ready #firebaseStatus{display:block}
 header{background:linear-gradient(120deg,#10233d,#244f83);color:#fff;padding:28px 18px}
 .wrap{max-width:1200px;margin:auto;padding:0 16px}h1{margin:0 0 8px;font-size:clamp(1.6rem,4vw,2.5rem)}header p{margin:0;color:#e3ebf7}
 main{padding:20px 0 48px}.panel{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px;margin:0 0 18px;box-shadow:0 4px 18px #14243a0b}
@@ -50,7 +54,7 @@ footer{color:var(--muted);text-align:center;padding:20px;font-size:.85rem}
  <div class="notice"><strong>Firebase:</strong> <span id="firebaseStatusText">Bağlantı hazırlanıyor…</span></div>
  <section class="card" style="margin-top:12px;padding:14px">
   <h2 style="margin-top:0">🔐 Hesap girişi ve cihazlar arası eşitleme</h2>
-  <p class="small">Öğrenciler kendi e-posta ve şifreleriyle giriş yapar. Yönetici hesabı yetkisi tanımlı UID ile kontrol edilir. Giriş yapınca kayıtlar Firestore ile eşitlenir.</p>
+  <p class="small">Uygulamayı kullanmak için öğrenci hesabı oluşturmalı veya mevcut hesabınla giriş yapmalısın. Giriş yapılmadan çalışma alanı açılmaz. Kayıtlar Firestore ile eşitlenir.</p>
   <div class="controls" id="authFields">
    <input id="authEmail" type="email" autocomplete="username" placeholder="E-posta" style="min-width:220px">
    <input id="authPassword" type="password" autocomplete="current-password" placeholder="Şifre" style="min-width:180px">
@@ -274,13 +278,14 @@ async function refreshCloudAccounts(){
 }
 async function handleAuthUser(user){
  currentUser=user||null;isAdmin=!!user&&user.uid===ADMIN_UID;cloudTargetUid=user?user.uid:null;
+ document.body.classList.toggle("auth-ready",!!user);
  const logout=$('authLogout'), login=$('authLogin'), reg=$('authRegister');
  if(logout)logout.hidden=!user;if(login)login.hidden=!!user;if(reg)reg.hidden=!!user;
  if($('authEmail'))$('authEmail').disabled=!!user;if($('authPassword'))$('authPassword').disabled=!!user;
  $('authUserText').textContent=user?('Giriş: '+(user.email||user.uid)+(isAdmin?' • YÖNETİCİ':' • ÖĞRENCİ')):'Giriş yapılmadı.';
  $('cloudAdminBox').hidden=!isAdmin;
  $('adminLogin').hidden=!!user&&!isAdmin;
- if(!user){cloudStatus('Giriş yapılmadı. Bu cihazdaki yerel kayıtlar kullanılabilir.');return;}
+ if(!user){cloudStatus('Uygulamayı başlatmak için öğrenci hesabı oluştur veya giriş yap.');return;}
  try{
   await cloudLoad(user.uid);
   if(isAdmin)await refreshCloudAccounts();
