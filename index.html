@@ -46,6 +46,27 @@ footer{color:var(--muted);text-align:center;padding:20px;font-size:.85rem}
 <p id="hSub"></p>
 </div></header>
 <main class="wrap">
+<div id="firebaseStatus" class="wrap" style="padding-bottom:14px">
+ <div class="notice"><strong>Firebase:</strong> <span id="firebaseStatusText">Bağlantı hazırlanıyor…</span></div>
+ <section class="card" style="margin-top:12px;padding:14px">
+  <h2 style="margin-top:0">🔐 Hesap girişi ve cihazlar arası eşitleme</h2>
+  <p class="small">Öğrenciler kendi e-posta ve şifreleriyle giriş yapar. Yönetici hesabı yetkisi tanımlı UID ile kontrol edilir. Giriş yapınca kayıtlar Firestore ile eşitlenir.</p>
+  <div class="controls" id="authFields">
+   <input id="authEmail" type="email" autocomplete="username" placeholder="E-posta" style="min-width:220px">
+   <input id="authPassword" type="password" autocomplete="current-password" placeholder="Şifre" style="min-width:180px">
+   <button id="authLogin" type="button">Giriş yap</button>
+   <button id="authRegister" type="button" class="secondary">Öğrenci hesabı oluştur</button>
+   <button id="authLogout" type="button" class="secondary" hidden>Çıkış yap</button>
+  </div>
+  <p id="authUserText" class="small">Giriş yapılmadı.</p>
+  <div id="cloudAdminBox" hidden>
+   <h3>Buluttaki öğrenci hesapları</h3>
+   <div class="controls"><button id="cloudRefresh" type="button" class="secondary">Listeyi yenile</button><select id="cloudAccounts" style="min-width:240px"><option value="">Öğrenci hesabı seç…</option></select><button id="cloudLoad" type="button">Seçili hesabı yükle</button><button id="cloudDeleteStudent" type="button" class="danger">Öğrenciyi sil</button><button id="cloudBack" type="button" class="secondary">Kendi hesabıma dön</button></div>
+   <p class="small">Hesap listesi sadece yöneticiye görünür. Seçilen hesaba yapılan kayıtlar o öğrencinin bulut kaydına yazılır.</p>
+  </div>
+ </section>
+</div>
+
 <section class="panel">
 <h2>👤 Öğrenci ve çalışma ayarları</h2>
 <div class="controls">
@@ -129,26 +150,7 @@ footer{color:var(--muted);text-align:center;padding:20px;font-size:.85rem}
 
 </main>
 <footer id="footerText"></footer>
-<div id="firebaseStatus" class="wrap" style="padding-bottom:14px">
- <div class="notice"><strong>Firebase:</strong> <span id="firebaseStatusText">Bağlantı hazırlanıyor…</span></div>
- <section class="card" style="margin-top:12px;padding:14px">
-  <h2 style="margin-top:0">🔐 Hesap girişi ve cihazlar arası eşitleme</h2>
-  <p class="small">Öğrenciler kendi e-posta ve şifreleriyle giriş yapar. Yönetici hesabı yetkisi tanımlı UID ile kontrol edilir. Giriş yapınca kayıtlar Firestore ile eşitlenir.</p>
-  <div class="controls" id="authFields">
-   <input id="authEmail" type="email" autocomplete="username" placeholder="E-posta" style="min-width:220px">
-   <input id="authPassword" type="password" autocomplete="current-password" placeholder="Şifre" style="min-width:180px">
-   <button id="authLogin" type="button">Giriş yap</button>
-   <button id="authRegister" type="button" class="secondary">Öğrenci hesabı oluştur</button>
-   <button id="authLogout" type="button" class="secondary" hidden>Çıkış yap</button>
-  </div>
-  <p id="authUserText" class="small">Giriş yapılmadı.</p>
-  <div id="cloudAdminBox" hidden>
-   <h3>Buluttaki öğrenci hesapları</h3>
-   <div class="controls"><button id="cloudRefresh" type="button" class="secondary">Listeyi yenile</button><select id="cloudAccounts" style="min-width:240px"><option value="">Öğrenci hesabı seç…</option></select><button id="cloudLoad" type="button">Seçili hesabı yükle</button><button id="cloudDeleteStudent" type="button" class="danger">Öğrenciyi sil</button><button id="cloudBack" type="button" class="secondary">Kendi hesabıma dön</button></div>
-   <p class="small">Hesap listesi sadece yöneticiye görünür. Seçilen hesaba yapılan kayıtlar o öğrencinin bulut kaydına yazılır.</p>
-  </div>
- </section>
-</div>
+
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
