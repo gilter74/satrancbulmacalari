@@ -50,6 +50,31 @@ button:focus,input:focus,select:focus,textarea:focus{outline:3px solid #8bb8ff;o
 details.sec{border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin:12px 0;background:#fcfdff}details.sec>summary{cursor:pointer;font-weight:800;color:var(--navy);font-size:1.05rem}
 .admin-panel .puzzle input[type=number]{width:110px;display:block}
 footer{color:var(--muted);text-align:center;padding:20px;font-size:.85rem}
+
+/* Student experience: clear menu and one focused page at a time */
+#studentMenu{display:none}
+body.auth-ready #studentMenu{display:block}
+body.student-pending #studentMenu,body.student-report-locked #studentMenu{display:none!important}
+body:not(.auth-ready) #studentMenu{display:none!important}
+.student-menu{margin:8px 0 18px;padding:18px;background:linear-gradient(135deg,#fff 0%,#f4f7fc 100%);border:1px solid #dbe4f0;border-radius:20px;box-shadow:0 8px 28px #13243a0c}
+.student-menu-head{display:flex;flex-direction:column;gap:3px;margin-bottom:14px}
+.menu-kicker{font-size:.7rem;letter-spacing:.13em;font-weight:850;color:#66809e}
+.student-menu-head strong{font-size:1.25rem;color:var(--navy)}
+.student-menu-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.menu-card{display:flex;align-items:center;gap:10px;min-height:86px;text-align:left;padding:13px;background:#fff;color:var(--navy);border:1px solid #dce5f0;border-radius:15px;box-shadow:0 2px 8px #13243a08;transition:.15s ease}
+.menu-card:hover{transform:translateY(-2px);border-color:#9db6d6}
+.menu-card.active{background:#edf4ff;border:2px solid #3568ad;box-shadow:0 4px 14px #2459a91a}
+.menu-icon{font-size:1.65rem;flex:0 0 auto}
+.menu-card b,.menu-card small{display:block}
+.menu-card b{font-size:.93rem;line-height:1.25}
+.menu-card small{font-size:.75rem;font-weight:500;color:#66758a;line-height:1.3;margin-top:4px}
+.menu-arrow{margin-left:auto;font-size:1.5rem;color:#8aa0ba}
+.student-page-title{margin-top:14px;padding-top:12px;border-top:1px solid #e4ebf3;color:#244f83;font-weight:800;font-size:.95rem}
+body.auth-ready main.wrap>section.student-view{display:none}
+body.auth-ready main.wrap>section.student-view.student-view-active{display:block}
+@media(max-width:760px){.student-menu-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.menu-card{min-height:78px;padding:10px}.menu-card small{font-size:.7rem}}
+@media(max-width:420px){.student-menu{padding:13px}.student-menu-grid{grid-template-columns:1fr}.menu-card{min-height:66px}}
+
 @media print{body{background:white;font-size:11pt}header{padding:12px;background:#fff;color:#111;border-bottom:2px solid #222}header p{color:#333}.wrap{max-width:none;padding:0}.panel{box-shadow:none;break-inside:avoid;margin-bottom:10px;padding:12px}.week-tabs,.actions,.no-print,button,#adminPanel{display:none!important}.day-grid{grid-template-columns:repeat(2,1fr)}.day{break-inside:avoid}.task{margin:4px 0;padding:4px 0}.report{font-size:9pt}footer{display:none}}
 </style>
 </head>
@@ -115,13 +140,37 @@ footer{color:var(--muted);text-align:center;padding:20px;font-size:.85rem}
  <div id="reportLockContent"></div>
 </section>
 
+
+<nav id="studentMenu" class="student-menu" aria-label="Öğrenci menüsü">
+  <div class="student-menu-head">
+    <span class="menu-kicker">ÇALIŞMA ALANIN</span>
+    <strong>Bugün ne yapmak istiyorsun?</strong>
+    <span class="small">İstediğin bölüme dokun, yalnızca o sayfa açılsın.</span>
+  </div>
+  <div class="student-menu-grid">
+    <button type="button" class="menu-card active" data-student-page="home">
+      <span class="menu-icon">🏠</span><span><b>Ana Sayfa</b><small>İlerlemem ve programım</small></span><span class="menu-arrow">›</span>
+    </button>
+    <button type="button" class="menu-card" data-student-page="weekly">
+      <span class="menu-icon">🧩</span><span><b>Haftalık Bulmacalar</b><small>Hafta hedeflerim</small></span><span class="menu-arrow">›</span>
+    </button>
+    <button type="button" class="menu-card" data-student-page="daily">
+      <span class="menu-icon">📅</span><span><b>Günlük Çalışmam</b><small>Bugünkü görevlerim</small></span><span class="menu-arrow">›</span>
+    </button>
+    <button type="button" class="menu-card" data-student-page="proofs">
+      <span class="menu-icon">📸</span><span><b>Kanıt ve Oyunlarım</b><small>Ekran görüntüsü ve oyun linkleri</small></span><span class="menu-arrow">›</span>
+    </button>
+  </div>
+  <div id="studentPageTitle" class="student-page-title">🏠 Ana Sayfa</div>
+</nav>
+
 <section id="studentNoticePanel" class="panel" hidden aria-live="polite" style="border:2px solid #147d52;background:#effaf3">
  <h2>🎉 Öğretmeninden yeni program bildirimi</h2>
  <p id="studentNoticeText"></p>
  <button id="dismissStudentNotice" type="button" class="secondary">Tamam</button>
 </section>
 
-<section class="panel">
+<section class="panel student-view" data-student-view="home">
 <h2>👤 Öğrenci ve çalışma ayarları</h2>
 <div class="controls">
 <label>Öğrenci adı-soyadı <input id="studentName" type="text" placeholder="Kayıt sırasında girilen ad-soyad" readonly></label>
@@ -133,7 +182,7 @@ footer{color:var(--muted);text-align:center;padding:20px;font-size:.85rem}
 <div class="notice"><strong>Çalışma kuralı:</strong> <span id="ruleText"></span></div>
 </section>
 
-<section class="panel">
+<section class="panel student-view" data-student-view="home">
 <h2>📊 Haftalık ilerleme</h2>
 <div class="week-tabs" id="weekTabs">
 <button data-week="0" class="active">1. Hafta</button><button data-week="1">2. Hafta</button><button data-week="2">3. Hafta</button><button data-week="3">4. Hafta</button>
@@ -146,18 +195,18 @@ footer{color:var(--muted);text-align:center;padding:20px;font-size:.85rem}
 </div>
 </section>
 
-<section class="panel">
+<section class="panel student-view" data-student-view="weekly">
 <h2 id="weekTitle"></h2>
 <p id="weekFocus" class="small"></p>
 </section>
 
-<section class="panel">
+<section class="panel student-view" data-student-view="weekly">
 <h2>🧩 Haftalık bulmaca hedefleri</h2>
 <p class="small" id="puzzleInstruction"></p>
 <div id="puzzleGrid" class="puzzle-grid"></div>
 </section>
 
-<section class="panel">
+<section class="panel student-view" data-student-view="daily">
 <h2>🗓️ Günlük çalışma çizelgesi</h2>
 <p class="small">Her gün için oyun hedefi gün kartında yazar. Oyun sayısını gerçek oynadığın sayı olarak gir.</p>
 <div id="dayGrid" class="day-grid"></div>
@@ -181,7 +230,7 @@ footer{color:var(--muted);text-align:center;padding:20px;font-size:.85rem}
 <div id="report" class="report" hidden></div>
 </section>
 
-<section class="panel">
+<section class="panel student-view" data-student-view="proofs">
  <h2>📸 Haftalık kanıt ve oyun bağlantıları</h2>
  <p class="notice" id="proofNotice"></p>
  <div class="progress-row"><span class="proof-count" id="proofPuzzleCount"></span><span class="proof-count" id="proofGameCount"></span></div>
@@ -1003,7 +1052,30 @@ $('addImages').addEventListener('click',async()=>{await addImages([...$('puzzleI
 $('adminLogin').addEventListener('click',adminLogin);
 $('saveAdminAll').addEventListener('click',async()=>{if(!requireAdminAction())return;const btn=$('saveAdminAll'),st=$('adminSaveStatus');btn.disabled=true;if(st)st.textContent='Tüm ayarlar ve seçili öğrencinin değişiklikleri buluta kaydediliyor…';try{saveCfg();saveState();saveProofs();const ok=await cloudSaveNow();if(ok===false)throw new Error('Bulut kaydı başarısız. Firebase durum mesajını kontrol et.');adminHasUnsavedChanges=false;if(st)st.textContent='✓ Tüm değişiklikler kaydedildi.';alert('Yönetici ayarları ve seçili öğrenciye ait değişiklikler kaydedildi.');}catch(e){if(st)st.textContent='Kayıt başarısız: '+e.message;alert('Kayıt yapılamadı: '+e.message);}finally{btn.disabled=false;}});
 $('closeAdmin').addEventListener('click',async()=>{if(adminHasUnsavedChanges&&confirm('Kaydedilmemiş değişiklikler var. Şimdi kaydedilsin mi?')){await $('saveAdminAll').click();} $('adminPanel').hidden=true;});
-$('adminPanel').hidden=true;$('adminLogin').hidden=true;renderStudent();renderProofs();initFirebaseAuthUI();
+
+// Öğrenci menüsü: sayfaları sadeleştirir, yalnızca seçilen bölümü gösterir.
+const studentPageNames={home:'🏠 Ana Sayfa',weekly:'🧩 Haftalık Bulmacalar',daily:'📅 Günlük Çalışmam',proofs:'📸 Kanıt ve Oyunlarım'};
+function showStudentPage(page){
+  if(!studentPageNames[page]) page='home';
+  document.querySelectorAll('[data-student-view]').forEach(el=>{
+    el.classList.toggle('student-view-active',el.dataset.studentView===page);
+  });
+  document.querySelectorAll('[data-student-page]').forEach(btn=>{
+    const active=btn.dataset.studentPage===page;
+    btn.classList.toggle('active',active);
+    btn.setAttribute('aria-current',active?'page':'false');
+  });
+  const title=$('studentPageTitle');
+  if(title) title.textContent=studentPageNames[page];
+  try{sessionStorage.setItem('satranc_student_page',page);}catch(e){}
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+$('studentMenu').addEventListener('click',e=>{
+  const btn=e.target.closest('[data-student-page]');
+  if(btn) showStudentPage(btn.dataset.studentPage);
+});
+
+$('adminPanel').hidden=true;$('adminLogin').hidden=true;renderStudent();renderProofs();showStudentPage('home');initFirebaseAuthUI();
 // Yönetici paneli sekmeden ayrılınca/başka sayfaya geçince otomatik kapanır. Bekleyen değişiklikler önce kaydedilmeye çalışılır.
 async function autoCloseAdminPanel(){if(!$('adminPanel').hidden){if(adminHasUnsavedChanges&&currentUser&&isAdmin){try{saveCfg();saveState();saveProofs();await cloudSaveNow();adminHasUnsavedChanges=false;}catch(e){console.error('Otomatik yönetici kaydı başarısız:',e);}}$('adminPanel').hidden=true;}}
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')autoCloseAdminPanel();});
