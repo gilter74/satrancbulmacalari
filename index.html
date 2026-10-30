@@ -18,6 +18,10 @@ body.auth-ready #firebaseStatus{display:block}
 body.student-pending main.wrap > section:not(#studentWaitingPanel){display:none!important}
 #studentWaitingPanel{display:none}
 body.student-pending #studentWaitingPanel{display:block!important}
+/* 30. gün rapor teslim kilidi: öğrenci giriş yapabilir ancak çalışma alanını kullanamaz. */
+body.student-report-locked main.wrap > section:not(#reportLockPanel){display:none!important}
+#reportLockPanel{display:none}
+body.student-report-locked #reportLockPanel{display:block!important}
 header{background:linear-gradient(120deg,#10233d,#244f83);color:#fff;padding:28px 18px}
 .wrap{max-width:1200px;margin:auto;padding:0 16px}h1{margin:0 0 8px;font-size:clamp(1.6rem,4vw,2.5rem)}header p{margin:0;color:#e3ebf7}
 main{padding:20px 0 48px}.panel{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px;margin:0 0 18px;box-shadow:0 4px 18px #14243a0b}
@@ -70,8 +74,8 @@ footer{color:var(--muted);text-align:center;padding:20px;font-size:.85rem}
   <p id="authUserText" class="small">Giriş yapılmadı.</p>
   <div id="cloudAdminBox" hidden>
    <h3>Buluttaki öğrenci hesapları</h3>
-   <div class="controls"><button id="cloudRefresh" type="button" class="secondary">Listeyi yenile</button><select id="cloudAccounts" style="min-width:240px"><option value="">Öğrenci hesabı seç…</option></select><button id="cloudLoad" type="button">Seçili hesabı yükle</button><button id="approveStudent" type="button" class="gold">Programı onayla ve aç</button><button id="revokeStudent" type="button" class="danger">Programı durdur</button><button id="cloudDeleteStudent" type="button" class="danger">Öğrenciyi sil</button><button id="cloudBack" type="button" class="secondary">Kendi hesabıma dön</button></div>
-   <p class="small">Hesap listesi sadece yöneticiye görünür. Öğrenciler ad-soyad ve e-posta bilgileriyle listelenir. Seçilen hesaba yapılan kayıtlar o öğrencinin bulut kaydına yazılır.</p>
+   <div class="controls"><button id="cloudRefresh" type="button" class="secondary">Listeyi yenile</button><select id="cloudAccounts" style="min-width:240px"><option value="">Öğrenci hesabı seç…</option></select><button id="cloudLoad" type="button">Seçili hesabı yükle</button><button id="approveStudent" type="button" class="gold">Programı onayla ve aç</button><button id="revokeStudent" type="button" class="danger">Programı durdur</button><button id="startNextProgram" type="button" class="gold">Raporu kontrol ettim — yeni programı başlat</button><button id="cloudDeleteStudent" type="button" class="danger">Öğrenciyi sil</button><button id="cloudBack" type="button" class="secondary">Kendi hesabıma dön</button></div>
+   <p class="small">Hesap listesi sadece yöneticiye görünür. 30. gün raporunu gönderen öğrenciyi seçip hesabını yükle; WhatsApp üzerinden gelen PDF’yi kontrol ettikten ve yeni program ayarlarını hazırladıktan sonra “Raporu kontrol ettim — yeni programı başlat” düğmesine bas. Öğrencinin “gönderdim” beyanı WhatsApp gönderimini otomatik doğrulamaz; PDF’yi öğretmen kontrol eder.</p>
   </div>
  </section>
 </div>
@@ -90,6 +94,29 @@ footer{color:var(--muted);text-align:center;padding:20px;font-size:.85rem}
   </ol>
   <p class="small">Hazır olduğunda öğretmeninle iletişime geç. Onay verildiğinde sayfa otomatik olarak açılacaktır.</p>
  </div>
+</section>
+
+<section id="day30Panel" class="panel" hidden aria-live="polite" style="border:3px solid #d9a441;background:#fff8e8;text-align:center;padding:26px">
+ <div style="font-size:2.8rem">🏁</div>
+ <h2 style="font-size:1.8rem;color:#805300;margin-bottom:8px">30 GÜN TAMAMLANDI!</h2>
+ <p id="day30Message" style="font-size:1.05rem;font-weight:650">Satranç çalışma programının 30 günlük süresi tamamlandı.</p>
+ <p>Şimdi 30 günlük çalışma raporunu PDF olarak hazırla ve öğretmenine WhatsApp üzerinden gönder.</p>
+ <div class="actions" style="justify-content:center">
+  <button id="make30DayPdf" type="button" class="gold">📄 30 GÜNLÜK PDF RAPORUNU HAZIRLA</button>
+  <button id="send30DayWhatsApp" type="button">📲 ÖĞRETMENİNE WHATSAPP’TAN GÖNDER</button>
+ </div>
+ <p class="small">PDF hazırlandıktan sonra yazdırma penceresinde “PDF olarak kaydet” seçeneğini seç. Ardından WhatsApp'ta PDF dosyasını ekleyip gönder.</p>
+</section>
+
+<section id="reportLockPanel" class="panel" aria-live="polite" style="border:3px solid #b42318;background:#fff7f5;text-align:center;padding:28px">
+ <div style="font-size:2.8rem">🔒</div>
+ <div id="reportLockContent"></div>
+</section>
+
+<section id="studentNoticePanel" class="panel" hidden aria-live="polite" style="border:2px solid #147d52;background:#effaf3">
+ <h2>🎉 Öğretmeninden yeni program bildirimi</h2>
+ <p id="studentNoticeText"></p>
+ <button id="dismissStudentNotice" type="button" class="secondary">Tamam</button>
 </section>
 
 <section class="panel">
@@ -211,7 +238,7 @@ try {
   console.error(firebaseError);
 }
 const ADMIN_UID='5pbxm0qkESVCQzLZCLEbT8hIi6A3';
-let currentUser=null, isAdmin=false, cloudTargetUid=null, cloudTargetEmail="", cloudSyncTimer=null, cloudApplying=false, programApproved=false; let approvalUnsub=null;
+let currentUser=null, isAdmin=false, cloudTargetUid=null, cloudTargetEmail="", cloudSyncTimer=null, cloudApplying=false, programApproved=false; let approvalUnsub=null, day30DueTimer=null, reportSubmittedAt=null, reportStatus='active', studentNoticeText='', lastNextProgramKey=null;
 const cloudStatus=(msg)=>{const el=$('firebaseStatusText');if(el)el.textContent=msg;};
 function cloudDoc(uid){return firestore.collection('accounts').doc(uid);}
 // Firestore disallows arrays nested inside other arrays; preserve app data using a tagged wrapper.
@@ -249,16 +276,21 @@ function scheduleCloudSave(){
 }
 function updateProgramGate(){
  const pending=!!currentUser&&!isAdmin&&programApproved!==true;
+ const dueStatus=get30DayStatus();
+ const reportLocked=!!currentUser&&!isAdmin&&programApproved===true&&!!dueStatus&&dueStatus.complete;
  document.body.classList.toggle('student-pending',pending);
+ document.body.classList.toggle('student-report-locked',reportLocked);
  const panel=$('studentWaitingPanel');
  if(panel)panel.setAttribute('aria-hidden',pending?'false':'true');
+ if(typeof render30DayNotice==='function')render30DayNotice();
+ if(typeof renderStudentNotice==='function')renderStudentNotice();
 }
 async function setStudentProgramApproval(approved){
  if(!isAdmin||!currentUser||currentUser.uid!==ADMIN_UID||!firestore){alert('Bu işlem yalnızca yönetici tarafından yapılabilir.');return;}
  const studentUid=$('cloudAccounts')?.value||'';
  if(!studentUid||studentUid===ADMIN_UID){alert('Önce onay verilecek öğrenci hesabını seç.');return;}
  if(cloudTargetUid!==studentUid){alert('Önce öğrenciyi seçip “Seçili hesabı yükle” düğmesine bas. Öğrencinin ayarlarını bu hesap üzerinde tamamladıktan sonra onay verebilirsin.');return;}
- if(approved&&!confirm('Öğrencinin program başlangıcı bugün olarak ayarlanacak. 30 günlük takip süresi başlayacak ve 30. gün sonunda PDF raporu e-posta ile gönderilecek. Onaylıyor musun?'))return;
+ if(approved&&!confirm('Öğrencinin program başlangıcı bugün olarak ayarlanacak. 30 günlük takip süresi başlayacak. 30. gün sonunda öğrenci PDF raporunu WhatsApp ile öğretmenine göndermeden programı kullanamayacak. Onaylıyor musun?'))return;
  try{
   if(cloudSyncTimer){clearTimeout(cloudSyncTimer);cloudSyncTimer=null;}
   const approvalNow=new Date();
@@ -284,12 +316,12 @@ async function setStudentProgramApproval(approved){
 async function cloudLoad(uid){
  const snap=await cloudDoc(uid).get();
  if(!snap.exists){
-  cloudTargetUid=uid;cloudTargetEmail=uid===currentUser?.uid?currentUser?.email||'':'';programApproved=false;updateProgramGate();
+  cloudTargetUid=uid;cloudTargetEmail=uid===currentUser?.uid?currentUser?.email||'':'';programApproved=false;reportSubmittedAt=null;reportStatus='active';studentNoticeText='';updateProgramGate();
   // İlk giriş yapan öğrenciye bu cihazda açık kalmış başka bir hesabın verisini taşımayız.
   if(uid!==ADMIN_UID){state=normState(null);proofs=normProofs(null);cfg=defaultConfig();activeStudentKey='';localStorage.setItem(K_STATE,JSON.stringify(state));localStorage.setItem(K_PROOF,JSON.stringify(proofs));localStorage.setItem(K_CFG,JSON.stringify(cfg));localStorage.removeItem('satranc_active_student_key_v1');renderStudent();renderProofs();}
   cloudStatus('Yeni bulut kaydı hazırlanıyor…');await cloudSaveNow();return false;
  }
- const raw=snap.data(),d={...raw,state:decodeFirestoreArrays(raw.state),cfg:decodeFirestoreArrays(raw.cfg),proofs:decodeFirestoreArrays(raw.proofs)};programApproved=d.programApproved===true;cloudTargetEmail=d.email||'';cloudApplying=true;
+ const raw=snap.data(),d={...raw,state:decodeFirestoreArrays(raw.state),cfg:decodeFirestoreArrays(raw.cfg),proofs:decodeFirestoreArrays(raw.proofs)};programApproved=d.programApproved===true;cloudTargetEmail=d.email||'';reportSubmittedAt=d.reportSubmittedAt||null;reportStatus=d.reportStatus||'active';studentNoticeText=d.studentNotice||'';lastNextProgramKey=d.nextProgramStartedAt?.toMillis?.()||d.nextProgramStartedAt?.seconds||null;cloudApplying=true;
  try{
   if(d.cfg&&typeof d.cfg==='object'){cfg=d.cfg;localStorage.setItem(K_CFG,JSON.stringify(cfg));}
   if(d.state&&typeof d.state==='object'){state=normState(d.state);if(!state.name&&d.fullName)state.name=d.fullName;localStorage.setItem(K_STATE,JSON.stringify(state));}else if(d.fullName){state.name=d.fullName;localStorage.setItem(K_STATE,JSON.stringify(state));}
@@ -328,7 +360,7 @@ async function refreshCloudAccounts(){
  const sel=$('cloudAccounts');sel.innerHTML='<option value="">Yükleniyor…</option>';
  try{
   const snap=await firestore.collection('accounts').get();sel.innerHTML='<option value="">Öğrenci hesabı seç…</option>';
-  snap.forEach(doc=>{if(doc.id===currentUser.uid)return;const d=doc.data()||{},o=document.createElement('option');o.value=doc.id;o.textContent=(d.fullName||d.name||'Öğrenci')+(d.email?' • '+d.email:'')+' • '+(d.programApproved===true?'ONAYLI':'ONAY BEKLİYOR')+' — '+doc.id.slice(0,8);sel.appendChild(o);});
+  snap.forEach(doc=>{if(doc.id===currentUser.uid)return;const d=doc.data()||{},o=document.createElement('option');o.value=doc.id;o.textContent=(d.fullName||d.name||'Öğrenci')+(d.email?' • '+d.email:'')+' • '+(d.reportSubmittedAt?'RAPOR GÖNDERİLDİ':(d.programApproved===true?'ONAYLI':'ONAY BEKLİYOR'))+' — '+doc.id.slice(0,8);sel.appendChild(o);});
   if(sel.options.length===1)sel.innerHTML='<option value="">Henüz öğrenci bulut kaydı yok</option>';
  }catch(e){sel.innerHTML='<option value="">Liste alınamadı</option>';cloudStatus('Hesap listesi alınamadı: '+(e.code||e.message));}
 }
@@ -345,7 +377,12 @@ async function handleAuthUser(user){
  if(!user){cloudStatus('Uygulamayı başlatmak için öğrenci hesabı oluştur veya giriş yap.');return;}
  try{
   await cloudLoad(user.uid);
-  if(!isAdmin){approvalUnsub=cloudDoc(user.uid).onSnapshot(doc=>{programApproved=doc.exists&&doc.data().programApproved===true;updateProgramGate();},err=>{console.error('Onay durumu dinlenemedi:',err);programApproved=false;updateProgramGate();});}
+  if(!isAdmin){approvalUnsub=cloudDoc(user.uid).onSnapshot(doc=>{
+   const d=doc.exists?doc.data():{};
+   const nextKey=d.nextProgramStartedAt?.toMillis?.()||d.nextProgramStartedAt?.seconds||null;
+   if(nextKey&&nextKey!==lastNextProgramKey){lastNextProgramKey=nextKey;cloudLoad(user.uid).then(()=>updateProgramGate()).catch(err=>console.error('Yeni program yüklenemedi:',err));return;}
+   programApproved=d.programApproved===true;reportSubmittedAt=d.reportSubmittedAt||null;reportStatus=d.reportStatus||'active';studentNoticeText=d.studentNotice||'';updateProgramGate();
+  },err=>{console.error('Onay durumu dinlenemedi:',err);programApproved=false;updateProgramGate();});}
   if(isAdmin)await refreshCloudAccounts();
   updateProgramGate();
   cloudStatus('Bağlandı: '+(isAdmin?'Yönetici':'Öğrenci')+' • cihazlar arası eşitleme açık');
@@ -379,6 +416,7 @@ function initFirebaseAuthUI(){
  $('cloudRefresh').addEventListener('click',refreshCloudAccounts);
  $('approveStudent').addEventListener('click',()=>setStudentProgramApproval(true));
  $('revokeStudent').addEventListener('click',()=>setStudentProgramApproval(false));
+ $('startNextProgram').addEventListener('click',startNextProgramAfterReview);
  $('cloudDeleteStudent').addEventListener('click',deleteSelectedStudent);
  $('cloudLoad').addEventListener('click',async()=>{const id=$('cloudAccounts').value;if(!id)return alert('Önce öğrenci hesabı seç.');if(!confirm('Seçili öğrencinin bulut verisi yüklensin mi? Mevcut ekrandaki son değişiklikler önce kaydedilecek.'))return;await cloudSaveNow();await cloudLoad(id);});
  $('cloudBack').addEventListener('click',async()=>{if(!currentUser)return;await cloudSaveNow();await cloudLoad(currentUser.uid);});
@@ -517,7 +555,7 @@ function renderStudent(){
  $('studentName').value=state.name||'';$('studentName').readOnly=true;$('startDate').value=state.startDate||'';$('startDate').readOnly=true;const pi=$('programPeriodInfo');if(pi){const st=state.startDate?new Date(state.startDate+'T00:00:00'):null;const end=st?new Date(st.getTime()+30*86400000):null;pi.textContent=st?`Program ${state.startDate} tarihinde başladı. 30 günlük takip bitişi: ${localDateISO(end)}. Başlangıç tarihi öğretmen onayıyla belirlenir.`:'Program başlangıç tarihi öğretmen onay verdiğinde otomatik belirlenir. Program süresi 30 gündür.';}
  document.querySelectorAll('#weekTabs button').forEach(b=>{const ix=Number(b.dataset.week);b.classList.toggle('active',ix===state.activeWeek);b.disabled=!cfg.weekAccess[ix];b.title=cfg.weekAccess[ix]?'Haftayı aç':'Bu hafta yönetici tarafından kilitlendi';});
  if(!cfg.weekAccess[state.activeWeek]){const firstOpen=cfg.weekAccess.findIndex(Boolean);if(firstOpen>=0)state.activeWeek=firstOpen;}
- if(!cfg.weekAccess.some(Boolean)){ $('weekTitle').textContent='🔒 Program yönetici tarafından kilitlendi';$('weekFocus').textContent='Çalışma bölümlerine erişmek için öğretmenin haftaları açmalıdır.';$('puzzleInstruction').textContent='Program şu anda kilitli.';$('puzzleGrid').innerHTML='';$('dayGrid').innerHTML='<div class="notice">Bu programın tüm haftaları yönetici tarafından kilitlendi.</div>';$('progressLabel').textContent='Program kilitli';$('progressBar').style.width='0%';$('taskStat').textContent='—';$('gameStat').textContent='—';$('puzzleStat').textContent='—';return;}
+ if(!cfg.weekAccess.some(Boolean)){ $('weekTitle').textContent='🔒 Program yönetici tarafından kilitlendi';$('weekFocus').textContent='Çalışma bölümlerine erişmek için öğretmenin haftaları açmalıdır.';$('puzzleInstruction').textContent='Program şu anda kilitli.';$('puzzleGrid').innerHTML='';$('dayGrid').innerHTML='<div class="notice">Bu programın tüm haftaları yönetici tarafından kilitlendi.</div>';$('progressLabel').textContent='Program kilitli';$('progressBar').style.width='0%';$('taskStat').textContent='—';$('gameStat').textContent='—';$('puzzleStat').textContent='—';render30DayNotice();return;}
  const wi=state.activeWeek,w=state.weeks[wi],cw=CW(wi);
  $('weekTitle').textContent=cw.title;$('weekFocus').textContent=cw.focus;
  const visibleCats=assignedCats(cw);const daily=visibleCats.reduce((s,c)=>s+quota(c),0);
@@ -532,6 +570,7 @@ function renderStudent(){
  $('progressLabel').textContent=pct+'% tamamlandı';$('progressBar').style.width=pct+'%';
  $('taskStat').textContent=`${done} / ${total}`;$('gameStat').textContent=games;$('puzzleStat').textContent=`${pDone} / ${pGoal}`;
  checkWeek(false);
+ render30DayNotice();
 }
 function evaluate(wi){
  const w=state.weeks[wi],cw=CW(wi),minG=Number(cfg.minGamesPerDay)||0;
@@ -564,6 +603,149 @@ function makeReport(){
  w.reportNote=L.join('\n');saveState();
  const el=$('report');el.hidden=false;el.textContent=w.reportNote;el.scrollIntoView({behavior:'smooth',block:'nearest'});
  return w.reportNote;
+}
+function get30DayStatus(){
+ if(!programApproved||!state.startDate)return null;
+ const start=new Date(state.startDate+'T00:00:00');
+ if(Number.isNaN(start.getTime()))return null;
+ const due=new Date(start);due.setDate(due.getDate()+30);
+ const now=new Date();
+ return {start,due,complete:now>=due,daysLeft:Math.max(0,Math.ceil((due-now)/86400000))};
+}
+function render30DayNotice(){
+ const panel=$('day30Panel'),lockPanel=$('reportLockPanel'),content=$('reportLockContent');
+ if(day30DueTimer){clearTimeout(day30DueTimer);day30DueTimer=null;}
+ const status=get30DayStatus();
+ const show=!!status&&status.complete&&!isAdmin;
+ if(panel)panel.hidden=true;
+ if(lockPanel)lockPanel.hidden=!show;
+ if(status&&!status.complete){
+  const delay=status.due.getTime()-Date.now()+1000;
+  if(delay>0&&delay<2147480000)day30DueTimer=setTimeout(()=>{updateProgramGate();},delay);
+ }
+ if(show&&content){
+  if(reportSubmittedAt){
+   content.innerHTML=`<h2 style="font-size:1.7rem;color:#8a4b00">PDF RAPORUN ÖĞRETMENİNE İLETİLDİ</h2>
+    <p style="font-size:1.08rem;font-weight:650">Rapor gönderim bildirimin alındı. Hesabın, öğretmenin raporunu kontrol edene ve yeni programını hazırlayana kadar kilitli kalacak.</p>
+    <p>Öğretmenin kontrolü tamamladığında yeni programın hazır olduğuna dair bildirim bu ekranda görünecek.</p>`;
+  }else{
+   content.innerHTML=`<h2 style="font-size:1.8rem;color:#a32319">30 GÜN DOLDU — PDF RAPORUNU GÖNDERMEDİN</h2>
+    <p style="font-size:1.08rem;font-weight:650">Çalışma hesabın geçici olarak kilitlendi. Önce 30 günlük PDF raporunu hazırla, WhatsApp üzerinden öğretmenine gönder ve ardından aşağıdaki onay düğmesine bas.</p>
+    <div class="actions" style="justify-content:center">
+     <button id="make30DayPdfLocked" type="button" class="gold">📄 30 GÜNLÜK PDF RAPORUNU HAZIRLA</button>
+     <button id="send30DayWhatsAppLocked" type="button">📲 ÖĞRETMENE WHATSAPP'TAN GÖNDER</button>
+    </div>
+    <p class="small">WhatsApp'ta PDF'yi dosya olarak ekleyip gönder. Sonra buraya dönerek “PDF'yi gönderdim” düğmesine bas.</p>
+    <button id="confirm30DaySent" type="button" class="gold">PDF'Yİ ÖĞRETMENİME GÖNDERDİM</button>`;
+   $('make30DayPdfLocked')?.addEventListener('click',prepare30DayPdf);
+   $('send30DayWhatsAppLocked')?.addEventListener('click',send30DayWhatsApp);
+   $('confirm30DaySent')?.addEventListener('click',mark30DayReportSubmitted);
+  }
+ }
+}
+function renderStudentNotice(){
+ const box=$('studentNoticePanel'),textEl=$('studentNoticeText');
+ if(!box||!textEl)return;
+ const show=!!currentUser&&!isAdmin&&!!studentNoticeText;
+ box.hidden=!show;
+ if(show)textEl.textContent=studentNoticeText;
+}
+async function mark30DayReportSubmitted(){
+ if(!currentUser||isAdmin||!firestore||!cloudTargetUid)return;
+ const status=get30DayStatus();
+ if(!status||!status.complete){alert('30 günlük süre henüz tamamlanmadı.');return;}
+ if(!confirm('PDF dosyasını WhatsApp üzerinden öğretmenine gönderdiğini onaylıyor musun?'))return;
+ try{
+  await cloudDoc(currentUser.uid).set({reportStatus:'submitted',reportSubmittedAt:firebase.firestore.FieldValue.serverTimestamp(),reportSubmittedBy:currentUser.uid},{merge:true});
+  reportStatus='submitted';reportSubmittedAt=new Date();render30DayNotice();
+ }catch(e){alert('Gönderim bildirimi kaydedilemedi: '+(e.code||e.message));}
+}
+async function dismissStudentNotice(){
+ if(!currentUser||isAdmin||!firestore)return;
+ try{await cloudDoc(currentUser.uid).set({studentNotice:''},{merge:true});studentNoticeText='';renderStudentNotice();}
+ catch(e){alert('Bildirim kapatılamadı: '+(e.code||e.message));}
+}
+async function startNextProgramAfterReview(){
+ if(!isAdmin||!currentUser||currentUser.uid!==ADMIN_UID||!firestore){alert('Bu işlem yalnızca yönetici tarafından yapılabilir.');return;}
+ const studentUid=$('cloudAccounts')?.value||'';
+ if(!studentUid||studentUid===ADMIN_UID){alert('Önce öğrenci hesabını seç.');return;}
+ if(cloudTargetUid!==studentUid){alert('Önce öğrencinin hesabını yükle ve raporunu kontrol et.');return;}
+ if(!reportSubmittedAt){alert('Öğrenci henüz PDF raporunu gönderdiğini bildirmedi. Yeni program başlatılamaz.');return;}
+ const fullName=(state.name||'Öğrenci').trim();
+ if(!confirm(`${fullName} öğrencisinin raporunu kontrol ettiğini ve yeni programını hazırladığını onaylıyor musun? Eski 30 günlük kayıt, geçmiş rapor olarak saklanacak; yeni dönem bugün başlayacak.`))return;
+ try{
+  if(cloudSyncTimer){clearTimeout(cloudSyncTimer);cloudSyncTimer=null;}
+  const oldProgram={
+   name:fullName,
+   startDate:state.startDate||'',
+   reportSubmittedAt:reportSubmittedAt,
+   savedAt:firebase.firestore.FieldValue.serverTimestamp(),
+   state:encodeFirestoreArrays(state),
+   proofs:encodeFirestoreArrays(proofs),
+   config:encodeFirestoreArrays(cfg)
+  };
+  state=normState(null);state.name=fullName;state.startDate=localDateISO(new Date());
+  proofs=normProofs(null);activeStudentKey='';
+  const payload=cloudSnapshot();
+  const clean=JSON.parse(JSON.stringify(payload));
+  clean.state=encodeFirestoreArrays(clean.state);clean.cfg=encodeFirestoreArrays(clean.cfg);clean.proofs=encodeFirestoreArrays(clean.proofs);
+  await cloudDoc(studentUid).set({
+   lastCompletedProgram:oldProgram,
+   state:clean.state,proofs:clean.proofs,cfg:clean.cfg,
+   name:fullName,fullName,email:cloudTargetEmail,
+   studentKey:'',
+   programApproved:true,
+   programStartedAt:firebase.firestore.Timestamp.fromDate(new Date()),
+   reportDueAt:firebase.firestore.Timestamp.fromDate(new Date(Date.now()+30*86400000)),
+   reportStatus:'active',reportSubmittedAt:firebase.firestore.FieldValue.delete(),
+   reportSubmittedBy:firebase.firestore.FieldValue.delete(),
+   studentNotice:'🎉 Öğretmenin 30 günlük raporunu kontrol etti ve yeni çalışma programını hazırladı. Yeni programın bugün başladı. Başarılar!',
+   nextProgramStartedAt:firebase.firestore.FieldValue.serverTimestamp(),
+   approvalUpdatedAt:firebase.firestore.FieldValue.serverTimestamp(),
+   approvalUpdatedBy:currentUser.uid
+  },{merge:true});
+  programApproved=true;reportSubmittedAt=null;reportStatus='active';
+  studentNoticeText='🎉 Öğretmenin 30 günlük raporunu kontrol etti ve yeni çalışma programını hazırladı. Yeni programın bugün başladı. Başarılar!';
+  renderStudent();renderProofs();updateProgramGate();await refreshCloudAccounts();
+  cloudStatus('Rapor kontrol edildi. Eski dönem saklandı ve yeni program öğrenci için açıldı.');
+  alert('Yeni program başlatıldı. Öğrenci giriş yaptığında yeni program bildirimi görecek.');
+ }catch(e){cloudStatus('Yeni program başlatılamadı: '+(e.code||e.message));alert('Yeni program başlatılamadı: '+(e.code||e.message));}
+}
+function build30DayReportHtml(){
+ const name=(state.name||'Öğrenci').trim(),start=state.startDate||'Belirtilmedi',made=localDateISO(new Date());
+ const sections=[];let totalGames=0,totalTasks=0,doneTasks=0,totalPuzzles=0,donePuzzles=0,totalImages=0,totalValidGames=0;
+ for(let wi=0;wi<4;wi++){
+  const w=state.weeks[wi],cw=cfg.weeks[wi],proof=pw(wi);let weekHtml='';
+  weekHtml+=`<h2>${esc(cw.title||`${wi+1}. Hafta`)}</h2><p>${esc(cw.focus||'')}</p>`;
+  for(let di=0;di<7;di++){
+   const d=w.days[di],tasks=cw.dayTasks[di]||[],cats=cw.categories||[];
+   const taskLines=tasks.map(t=>{totalTasks++;if(d.tasks[t.id])doneTasks++;return `<li>${d.tasks[t.id]?'☑':'☐'} ${esc(t.title)} — ${d.tasks[t.id]?'Tamamlandı':'Tamamlanmadı'}${t.desc?`<br><small>${esc(t.desc)}</small>`:''}</li>`;}).join('')||'<li>Bu gün için ayrıca tanımlanmış görev yok.</li>';
+   const puzzleLines=cats.map(c=>{const target=Math.max(0,Number(c.quota)||0),actual=Math.max(0,Number(d.puzzles[c.id])||0);totalPuzzles+=target;donePuzzles+=Math.min(actual,target);return `<li>${esc(c.name)}: ${actual}/${target} ${actual>=target?'✓':'— eksik '+Math.max(0,target-actual)}</li>`;}).join('')||'<li>Bulmaca kategorisi tanımlanmamış.</li>';
+   const planned=Math.max(0,Number(cw.plannedGames?.[di])||0),games=Math.max(0,Number(d.games)||0);totalGames+=games;
+   const surprise=getSur(d),surpriseText=surprise.category?`${esc(surprise.category)} (${surprise.checks.filter(Boolean).length}/${surprise.checks.length})`:'Seçilmedi';
+   weekHtml+=`<article class="day"><h3>${DAYS[di]}</h3><p><b>Günlük görevler</b></p><ul>${taskLines}</ul><p><b>Bulmaca çalışmaları</b></p><ul>${puzzleLines}</ul><p><b>Oyun:</b> ${games}/${planned} • <b>Sürpriz bulmaca:</b> ${surpriseText}</p><p><b>Öğrenci notu:</b> ${esc(d.note||'Yazılmadı')}</p></article>`;
+  }
+  const gameLinks=proof.games.filter(x=>String(x||'').trim());
+  const validLinks=gameLinks.filter(validUrl);totalImages+=proof.images.length;totalValidGames+=validLinks.length;
+  weekHtml+=`<div class="proof-summary"><b>Haftalık kanıtlar:</b> ${proof.images.length} ekran görüntüsü • ${validLinks.length} geçerli Chess.com oyun bağlantısı<br>${validLinks.length?validLinks.map(u=>`<a href="${esc(u)}">${esc(u)}</a>`).join('<br>'):'Geçerli oyun bağlantısı eklenmemiş.'}</div>`;
+  if(proof.images.length){weekHtml+=`<h3>Bulmaca ekran görüntüsü kanıtları</h3><div class="evidence">${proof.images.map((im,ii)=>`<figure><img src="${im.src}" alt="Bulmaca kanıtı ${ii+1}"><figcaption>${esc(im.topic||'Genel taktik')} • ${esc(im.difficulty||'Zorluk belirtilmedi')}</figcaption></figure>`).join('')}</div>`;}
+  weekHtml+=`<p><b>Öğrenci genel değerlendirmesi:</b> ${esc(w.studentReflection||'Yazılmadı')}</p><p><b>Öğretmen değerlendirmesi:</b> ${esc(w.teacherEvaluation||'Yazılmadı')}</p>`;
+  sections.push(`<section>${weekHtml}</section>`);
+ }
+ const stats=`<div class="stats"><div><b>Görevler</b><strong>${doneTasks}/${totalTasks}</strong></div><div><b>Bulmacalar</b><strong>${donePuzzles}/${totalPuzzles}</strong></div><div><b>Oynanan oyun</b><strong>${totalGames}</strong></div><div><b>Ekran görüntüsü</b><strong>${totalImages}</strong></div><div><b>Geçerli oyun linki</b><strong>${totalValidGames}</strong></div></div>`;
+ return `<!doctype html><html lang="tr"><head><meta charset="utf-8"><title>30 Günlük Satranç Çalışma Raporu</title><style>body{font:14px/1.5 Arial,sans-serif;color:#182536;margin:28px}h1,h2,h3{color:#17365d}h1{text-align:center}header{text-align:center;border-bottom:2px solid #d9a441;padding-bottom:14px}.meta,.proof-summary{background:#f3f6fa;padding:12px;border-radius:8px;margin:12px 0}.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:16px 0}.stats div{background:#f3f6fa;padding:10px;border-radius:8px;text-align:center}.stats strong{display:block;font-size:20px}.day{border:1px solid #d9e1ec;border-radius:8px;padding:10px;margin:10px 0;break-inside:avoid}.evidence{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.evidence figure{margin:0;break-inside:avoid;border:1px solid #d9e1ec;padding:6px}.evidence img{width:100%;max-height:240px;object-fit:contain}.evidence figcaption{font-size:11px}.day h3{margin:0}.day ul{margin-top:4px}.week{page-break-before:always}section{margin-bottom:25px}small{color:#596579}button{padding:12px 18px;font-weight:bold}@media print{body{margin:12mm}.no-print{display:none}.day{break-inside:avoid}}</style></head><body><header><h1>♟️ 30 GÜNLÜK SATRANÇ ÇALIŞMA RAPORU</h1><p><b>Öğrenci:</b> ${esc(name)} • <b>Program başlangıcı:</b> ${esc(start)} • <b>Rapor tarihi:</b> ${esc(made)}</p></header><div class="meta"><b>Rapor kapsamı:</b> Onay tarihinden itibaren 30 günlük program • Dört haftanın görev, bulmaca, oyun, kanıt ve değerlendirme kayıtları.</div>${stats}${sections.join('')}<p><b>Genel sonuç:</b> ${doneTasks}/${totalTasks} görev, ${donePuzzles}/${totalPuzzles} bulmaca hedefi, ${totalGames} oyun, ${totalImages} ekran görüntüsü ve ${totalValidGames} geçerli oyun bağlantısı kaydedildi.</p><div class="no-print"><button onclick="window.print()">PDF olarak yazdır / kaydet</button><p>Yazdırma penceresinde hedef olarak “PDF olarak kaydet” seçeneğini kullanın.</p></div></body></html>`;
+}
+function prepare30DayPdf(){
+ const win=window.open('','_blank');
+ if(!win){alert('PDF raporu açılmadı. Tarayıcıda açılır pencere iznini etkinleştirip tekrar dene.');return;}
+ win.document.open();win.document.write(build30DayReportHtml());win.document.close();
+}
+function send30DayWhatsApp(){
+ const phone=String(cfg.texts.teacherPhone||'').replace(/\D/g,'');
+ if(!phone){alert('Öğretmen WhatsApp numarası yönetici ayarlarında tanımlı değil.');return;}
+ const name=(state.name||'Öğrenci').trim();
+ const msg=`Merhaba öğretmenim. ${name} olarak 30 günlük satranç çalışma programımı tamamladım. Program başlangıç tarihi: ${state.startDate||'—'}. 30 günlük PDF çalışma raporumu bu mesaja dosya olarak ekleyip gönderiyorum.`;
+ window.open('https://wa.me/'+phone+'?text='+encodeURIComponent(msg),'_blank','noopener,noreferrer');
 }
 /* ---------- Kanıtlar ---------- */
 function pw(wi){const k=String(wi);if(!proofs.weeks[k])proofs.weeks[k]={images:[],games:[]};const w=proofs.weeks[k];const m=Math.max(1,Number(cfg.minGameLinks)||4);while(w.games.length<m)w.games.push('');return w;}
@@ -785,6 +967,9 @@ $('saveSettings').addEventListener('click',()=>{if(!isAdmin){alert('Öğrenci ad
 $('studentReflection').addEventListener('input',e=>{state.weeks[state.activeWeek].studentReflection=e.target.value;saveState();});
 $('teacherEvaluation').addEventListener('input',e=>{state.weeks[state.activeWeek].teacherEvaluation=e.target.value;saveState();});
 $('checkWeek').addEventListener('click',()=>checkWeek(true));
+$('make30DayPdf').addEventListener('click',prepare30DayPdf);
+$('send30DayWhatsApp').addEventListener('click',send30DayWhatsApp);
+ $('dismissStudentNotice').addEventListener('click',dismissStudentNotice);
 $('makeReport').addEventListener('click',makeReport);
 $('whatsapp').addEventListener('click',()=>{
  const p=proofMissing(state.activeWeek);
