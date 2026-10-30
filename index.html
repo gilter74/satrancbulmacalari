@@ -22,6 +22,8 @@ body.student-pending #studentWaitingPanel{display:block!important}
 body.student-report-locked main.wrap > section:not(#reportLockPanel){display:none!important}
 #reportLockPanel{display:none}
 body.student-report-locked #reportLockPanel{display:block!important}
+/* Admin tools are never shown to student accounts. */
+body:not(.is-admin) #adminPanel, body:not(.is-admin) #adminLogin, body:not(.is-admin) #resetAll{display:none!important}
 header{background:linear-gradient(120deg,#10233d,#244f83);color:#fff;padding:28px 18px}
 .wrap{max-width:1200px;margin:auto;padding:0 16px}h1{margin:0 0 8px;font-size:clamp(1.6rem,4vw,2.5rem)}header p{margin:0;color:#e3ebf7}
 main{padding:20px 0 48px}.panel{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px;margin:0 0 18px;box-shadow:0 4px 18px #14243a0b}
@@ -196,7 +198,7 @@ footer{color:var(--muted);text-align:center;padding:20px;font-size:.85rem}
  <h2>🔐 Admin / Öğretmen paneli</h2>
  <p class="small">Bu panelde yaptığın her değişiklik anında kaydedilir ve öğrenci sayfasına yansır. Panel bu tarayıcıda yerel olarak korunur; gerçek sunucu tabanlı kimlik doğrulama değildir. Eklediklerin/sildiklerin öğrenciye özeldir ve arşive dahildir.</p>
  <div id="adminBody"></div>
- <div class="actions"><button id="closeAdmin" class="secondary" type="button">Paneli kapat</button></div>
+ <div class="actions" style="position:sticky;bottom:8px;background:#fff;padding:12px;border:1px solid #ddd;border-radius:12px;z-index:20"><button id="saveAdminAll" class="gold" type="button">💾 Tüm yönetici değişikliklerini kaydet</button><span id="adminSaveStatus" class="small" role="status">Değişikliklerini tamamladıktan sonra kaydet.</span><button id="closeAdmin" class="secondary" type="button">Paneli kapat</button></div>
 </section>
 <div class="actions no-print"><button id="adminLogin" class="secondary" type="button">🔐 Admin girişi</button></div>
 
@@ -262,14 +264,17 @@ async function cloudSaveNow(){
  if(!currentUser||!firestore||!cloudTargetUid||cloudApplying)return;
  try{
   const payload=cloudSnapshot(),stamp=payload.updatedAt;delete payload.updatedAt;
-  const clean=JSON.parse(JSON.stringify(payload));
-  clean.state=encodeFirestoreArrays(clean.state);clean.cfg=encodeFirestoreArrays(clean.cfg);clean.proofs=encodeFirestoreArrays(clean.proofs);clean.updatedAt=stamp;
+  let clean;
+  if(isAdmin){clean=JSON.parse(JSON.stringify(payload));clean.state=encodeFirestoreArrays(clean.state);clean.cfg=encodeFirestoreArrays(clean.cfg);clean.proofs=encodeFirestoreArrays(clean.proofs);}
+  else {clean={state:encodeFirestoreArrays(JSON.parse(JSON.stringify(state))),proofs:encodeFirestoreArrays(JSON.parse(JSON.stringify(proofs))),updatedAtClient:payload.updatedAtClient};}
+  clean.updatedAt=stamp;
   await cloudDoc(cloudTargetUid).set(clean,{merge:true});cloudStatus('Bulut eşitlemesi tamamlandı • '+(isAdmin&&cloudTargetUid!==currentUser.uid?'Seçili öğrenci hesabı':'Bu hesap'));return true;
  }
  catch(e){cloudStatus('Buluta kaydedilemedi: '+(e.code||e.message));console.error('Firestore save error',e);return false;}
 }
 function scheduleCloudSave(){
  if(!currentUser||!firestore||!cloudTargetUid||cloudApplying)return;
+ if(isAdmin&&!$('adminPanel').hidden){adminHasUnsavedChanges=true;const st=$('adminSaveStatus');if(st)st.textContent='Kaydedilmemiş değişiklikler var. Kaydet düğmesine bas.';return;}
  if(cloudSyncTimer)clearTimeout(cloudSyncTimer);
  cloudStatus('Değişiklikler buluta kaydediliyor…');
  cloudSyncTimer=setTimeout(()=>cloudSaveNow(),800);
@@ -373,7 +378,9 @@ async function handleAuthUser(user){
  if($('authEmail'))$('authEmail').disabled=!!user;if($('authPassword'))$('authPassword').disabled=!!user;if($('authFirstName'))$('authFirstName').hidden=!!user;if($('authLastName'))$('authLastName').hidden=!!user;
  $('authUserText').textContent=user?('Giriş: '+(user.email||user.uid)+(isAdmin?' • YÖNETİCİ':' • ÖĞRENCİ')):'Giriş yapılmadı.';
  $('cloudAdminBox').hidden=!isAdmin;
- $('adminLogin').hidden=!!user&&!isAdmin;
+ $('adminLogin').hidden=!isAdmin;
+ $('adminPanel').hidden=true;
+ document.body.classList.toggle('is-admin',isAdmin);
  if(!user){cloudStatus('Uygulamayı başlatmak için öğrenci hesabı oluştur veya giriş yap.');return;}
  try{
   await cloudLoad(user.uid);
@@ -386,6 +393,7 @@ async function handleAuthUser(user){
   if(isAdmin)await refreshCloudAccounts();
   updateProgramGate();
   cloudStatus('Bağlandı: '+(isAdmin?'Yönetici':'Öğrenci')+' • cihazlar arası eşitleme açık');
+  if(isAdmin){adminHasUnsavedChanges=false;openAdmin();}
  }catch(e){cloudStatus('Bulut bağlantısı başarısız: '+(e.code||e.message));console.error(e);}
 }
 function initFirebaseAuthUI(){
@@ -530,6 +538,7 @@ function saveProofs(){try{localStorage.setItem(K_PROOF,JSON.stringify(proofs));}
 /* ---------- Yardımcılar ---------- */
 const CW=wi=>cfg.weeks[wi];
 function assignedCats(w){return (w.categories||[]).filter(c=>c.assigned!==false);}
+function weekCats(wi){return assignedCats(CW(wi)).filter(c=>catWeeklyGoal(wi,c)>0);}
 function dayCats(wi,di){const w=CW(wi),ids=w.dayCategories?.[di]||w.categories.map(c=>c.id);return assignedCats(w).filter(c=>ids.includes(c.id));}
 function catWeeklyGoal(wi,c){return DAYS.reduce((n,_,di)=>n+(dayCats(wi,di).some(x=>x.id===c.id)?quota(c):0),0);}
 const quota=c=>Math.max(0,Number(c.quota)||0);
@@ -562,14 +571,14 @@ function renderStudent(){
  if(!cfg.weekAccess.some(Boolean)){ $('weekTitle').textContent='🔒 Program yönetici tarafından kilitlendi';$('weekFocus').textContent='Çalışma bölümlerine erişmek için öğretmenin haftaları açmalıdır.';$('puzzleInstruction').textContent='Program şu anda kilitli.';$('puzzleGrid').innerHTML='';$('dayGrid').innerHTML='<div class="notice">Bu programın tüm haftaları yönetici tarafından kilitlendi.</div>';$('progressLabel').textContent='Program kilitli';$('progressBar').style.width='0%';$('taskStat').textContent='—';$('gameStat').textContent='—';$('puzzleStat').textContent='—';render30DayNotice();return;}
  const wi=state.activeWeek,w=state.weeks[wi],cw=CW(wi);
  $('weekTitle').textContent=cw.title;$('weekFocus').textContent=cw.focus;
- const visibleCats=assignedCats(cw);const daily=visibleCats.reduce((s,c)=>s+quota(c),0);
- $('puzzleInstruction').textContent=`Günlük toplam ${daily}, haftalık toplam ${daily*7} bulmaca hedeflenir.`;
+ const visibleCats=weekCats(wi);const weeklyTotal=visibleCats.reduce((s,c)=>s+catWeeklyGoal(wi,c),0);
+ $('puzzleInstruction').textContent=`Seçtiğin günlerde toplam ${weeklyTotal} bulmaca hedeflenir. Günlük çizelgede yalnızca o güne atadığın başlıklar görünür.`;
  $('puzzleGrid').innerHTML=visibleCats.map(c=>{const goal=catWeeklyGoal(wi,c),val=sumCat(wi,c.id);return `<div class="puzzle"><label>${esc(c.name)} <span class="tag">Haftalık hedef: ${goal}</span></label><div class="small">${esc(c.desc||'')}</div><p><strong>${Math.min(val,goal)} / ${goal}</strong> tamamlandı</p></div>`;}).join('')||'<p class="small">Bu hafta için bulmaca kategorisi tanımlı değil.</p>';
  $('dayGrid').innerHTML=DAYS.map((_,di)=>dayHtml(wi,di)).join('');
  $('studentReflection').value=w.studentReflection||'';$('teacherEvaluation').value=w.teacherEvaluation||'';
  let total=0,done=0,games=0,pDone=0,pGoal=0;
  for(let di=0;di<7;di++){const d=w.days[di],tl=cw.dayTasks[di];const ac=assignedCats(cw);const dc=dayCats(wi,di);total+=tl.length+(dc.length?1:0);done+=tl.filter(t=>d.tasks[t.id]).length+(dc.length&&dailyPuzzlesDone(wi,di)?1:0);games+=Number(d.games)||0;}
- assignedCats(cw).forEach(c=>{const g=catWeeklyGoal(wi,c);pGoal+=g;pDone+=Math.min(g,sumCat(wi,c.id));});
+ weekCats(wi).forEach(c=>{const g=catWeeklyGoal(wi,c);pGoal+=g;pDone+=Math.min(g,sumCat(wi,c.id));});
  const parts=[total?done/total:null,pGoal?pDone/pGoal:null].filter(x=>x!==null),pct=parts.length?Math.round(parts.reduce((s,x)=>s+x,0)/parts.length*100):0;
  $('progressLabel').textContent=pct+'% tamamlandı';$('progressBar').style.width=pct+'%';
  $('taskStat').textContent=`${done} / ${total}`;$('gameStat').textContent=games;$('puzzleStat').textContent=`${pDone} / ${pGoal}`;
@@ -578,7 +587,7 @@ function renderStudent(){
 }
 function evaluate(wi){
  const w=state.weeks[wi],cw=CW(wi),minG=Number(cfg.minGamesPerDay)||0;
- const puzzleMissing=assignedCats(cw).map(c=>({name:c.name,missing:catWeeklyGoal(wi,c)-sumCat(wi,c.id)})).filter(x=>x.missing>0);
+ const puzzleMissing=weekCats(wi).map(c=>({name:c.name,missing:catWeeklyGoal(wi,c)-sumCat(wi,c.id)})).filter(x=>x.missing>0);
  let taskOnlyDays=0;const lowGameDays=[];
  w.days.forEach((d,i)=>{const low=(Number(d.games)||0)<minG;if(low)lowGameDays.push(DAYS[i]);else if(!dayTasksComplete(wi,i))taskOnlyDays++;});
  const totalGames=w.days.reduce((s,d)=>s+(Number(d.games)||0),0);
@@ -596,10 +605,10 @@ function checkWeek(showAlert){
 function makeReport(){
  const wi=state.activeWeek,w=state.weeks[wi],cw=CW(wi),r=evaluate(wi),name=(state.name||'').trim()||'Öğrenci belirtilmedi';
  const L=[`♟️ SATRANÇ ÇALIŞMA RAPORU — ${wi+1}. HAFTA`,`Öğrenci: ${name}`,`Program başlangıcı: ${state.startDate||'Belirtilmedi'}`,`Hafta: ${cw.title}`,`Oynanan toplam oyun: ${r.totalGames}`,`Bulmaca durumu: ${r.puzzleMissing.length?'EKSİK':'TAMAM'}`,'','BULMACA HEDEFLERİ:'];
- assignedCats(cw).forEach(c=>{const goal=catWeeklyGoal(wi,c);if(!goal)return;const val=sumCat(wi,c.id);L.push(`• ${c.name}: ${Math.min(val,goal)}/${goal}${val>=goal?' ✓':' — eksik '+(goal-val)}`);});
+ weekCats(wi).forEach(c=>{const goal=catWeeklyGoal(wi,c);if(!goal)return;const val=sumCat(wi,c.id);L.push(`• ${c.name}: ${Math.min(val,goal)}/${goal}${val>=goal?' ✓':' — eksik '+(goal-val)}`);});
  L.push('','GÜNLÜK TAKİP:');
  DAYS.forEach((day,i)=>{const d=w.days[i],tl=cw.dayTasks[i],dn=tl.filter(t=>d.tasks[t.id]).length,s=getSur(d);
-  L.push(`${day}: ${dn}/${tl.length} görev, ${Number(d.games)||0} oyun; ${cw.categories.map(c=>`${c.name} ${Number(d.puzzles[c.id])||0}/${quota(c)}`).join(', ')}${d.note?` — Öğrenci notu: ${d.note}`:''}${s.category?` — Sürpriz: ${s.category} (${s.checks.filter(Boolean).length}/${s.checks.length})`:''}`);});
+  L.push(`${day}: ${dn}/${tl.length} görev, ${Number(d.games)||0} oyun; ${dayCats(wi,i).map(c=>`${c.name} ${Number(d.puzzles[c.id])||0}/${quota(c)}`).join(', ')}${d.note?` — Öğrenci notu: ${d.note}`:''}${s.category?` — Sürpriz: ${s.category} (${s.checks.filter(Boolean).length}/${s.checks.length})`:''}`);});
  L.push('','HAFTA SONU DURUMU: '+(r.ready?'TAMAMLANABİLİR':'EKSİKLER TAMAMLANMALI'));
  if(r.puzzleMissing.length)L.push('Eksik bulmacalar: '+r.puzzleMissing.map(x=>`${x.name} ${x.missing} adet`).join(', '));
  if(!r.dayRule)L.push('Gün/oyun eksiği kuralı karşılanmıyor.');
@@ -798,7 +807,7 @@ function renderAdmin(){
  let h=`<div class="controls"><strong>Yönetici görünümü:</strong><button type="button" class="secondary" data-act="openAllDetails">Tüm bölümleri aç</button><button type="button" class="secondary" data-act="closeAllDetails">Tüm bölümleri kapat</button></div><div class="controls" style="margin-top:10px"><strong>Düzenlenen hafta:</strong>${[0,1,2,3].map(i=>`<button type="button" class="${i===aw?'':'secondary'}" data-act="admWeek" data-i="${i}">${i+1}. Hafta</button><button type="button" class="${cfg.weekAccess[i]?'gold':'danger'}" data-act="toggleWeek" data-i="${i}">${i+1}. hafta ${cfg.weekAccess[i]?'açık':'kilitli'}</button>`).join('')}<button type="button" data-act="unlockAllWeeks">Tüm haftaları aç</button><button type="button" class="danger" data-act="lockAllWeeks">Tüm haftaları kilitle</button></div>`;
  h+=`<details class="sec" open><summary>📝 Sayfa metinleri ve genel kurallar</summary>${T('texts.title',cfg.texts.title,'Sayfa başlığı')}${T('texts.sub',cfg.texts.sub,'Alt başlık')}${TA('texts.notice',cfg.texts.notice,'Çalışma kuralı metni')}${T('texts.footer',cfg.texts.footer,'Alt bilgi')}${T('texts.teacherPhone',cfg.texts.teacherPhone,'Öğretmen WhatsApp numarası (ülke kodlu, örn. 905...)')}<div class="controls">${T('minGamesPerDay',cfg.minGamesPerDay,'Günlük en az oyun','number','data-min="0" max="20"')}${T('minScreenshots',cfg.minScreenshots,'Haftalık en az ekran görüntüsü','number','data-min="1" max="100"')}${T('minGameLinks',cfg.minGameLinks,'Haftalık en az oyun bağlantısı','number','data-min="1" max="100"')}</div></details>`;
  h+=`<details class="sec" open><summary>📅 ${aw+1}. Hafta başlığı ve odağı</summary>${T(P('title'),cw.title,'Hafta başlığı')}${TA(P('focus'),cw.focus,'Hafta açıklaması / amaç')}</details>`;
- h+=`<details class="sec" open><summary>🧩 ${aw+1}. Hafta bulmaca başlıkları ve günlük adetleri</summary><p class="small">Başlıkları listede tut; yanındaki tiki kaldırırsan öğrenci programında görünmez. Günlük adet, aşağıdaki gün çizelgesine otomatik aktarılır.</p><div class="puzzle-grid">${cw.categories.map((c,i)=>`<div class="puzzle">${T(P(`categories.${i}.name`),c.name,'Başlık')}${T(P(`categories.${i}.desc`),c.desc||'','Açıklama')}${T(P(`categories.${i}.quota`),c.quota,'Günlük adet','number','data-min="0" max="500"')}<label class="small"><input type="checkbox" data-path="${P(`categories.${i}.assigned`)}" data-type="bool" ${c.assigned!==false?'checked':''}> Bu öğrenciye ata / listesinde göster</label></div>`).join('')}</div><div class="actions"><button type="button" data-act="addCat">+ Bulmaca başlığı ekle</button><button type="button" class="secondary" data-act="copyCats">Bu listeyi diğer haftalara kopyala</button></div><label class="small">Toplu başlık ekle (her satıra bir başlık; istersen Başlık | Açıklama | Günlük adet biçiminde yapıştır)<textarea id="bulkCats" rows="5" class="full" placeholder="Çatal | Bir hamlede iki hedefe saldır. | 5&#10;1 hamlede mat | Rakip şahı tek hamlede mat et. | 5"></textarea></label><div class="actions"><button type="button" data-act="bulkCats">Başlıkları ekle ve kaydet</button><button type="button" class="gold" data-act="saveCats">Bu haftanın başlık listesini kaydet</button></div><p id="catsSaveStatus" class="small" role="status">Kayıtlı başlık sayısı: ${cw.categories.length}. Başlıklar otomatik kaydedilir; düğmeyle ayrıca kaydı onaylayabilirsin.</p></details>`;
+ h+=`<details class="sec" open><summary>🧩 ${aw+1}. Hafta bulmaca başlıkları ve günlük adetleri</summary><p class="small">Başlıkları burada bir kez tanımla. Tikli başlıklar öğrenciye atanır ve günlük çizelgede seçilebilir. Tiki kaldırırsan tüm günlerden de çıkar; yeniden tiklersen haftanın 7 gününe eklenir. Sonrasında gün gün tik kaldırarak sadece istediğin günlerde gösterebilirsin. Günlük adet bu listeden otomatik gelir.</p><div class="puzzle-grid">${cw.categories.map((c,i)=>`<div class="puzzle">${T(P(`categories.${i}.name`),c.name,'Başlık')}${T(P(`categories.${i}.desc`),c.desc||'','Açıklama')}${T(P(`categories.${i}.quota`),c.quota,'Günlük adet','number','data-min="0" max="500"')}<label class="small"><input type="checkbox" data-path="${P(`categories.${i}.assigned`)}" data-type="bool" ${c.assigned!==false?'checked':''}> Bu öğrenciye ata / listesinde göster</label></div>`).join('')}</div><div class="actions"><button type="button" data-act="addCat">+ Bulmaca başlığı ekle</button><button type="button" class="secondary" data-act="copyCats">Bu listeyi diğer haftalara kopyala</button></div><label class="small">Toplu başlık ekle (her satıra bir başlık; istersen Başlık | Açıklama | Günlük adet biçiminde yapıştır)<textarea id="bulkCats" rows="5" class="full" placeholder="Çatal | Bir hamlede iki hedefe saldır. | 5&#10;1 hamlede mat | Rakip şahı tek hamlede mat et. | 5"></textarea></label><div class="actions"><button type="button" data-act="bulkCats">Başlıkları ekle ve kaydet</button><button type="button" class="gold" data-act="saveCats">Bu haftanın başlık listesini kaydet</button></div><p id="catsSaveStatus" class="small" role="status">Kayıtlı başlık sayısı: ${cw.categories.length}. Başlıklar otomatik kaydedilir; düğmeyle ayrıca kaydı onaylayabilirsin.</p></details>`;
  h+=`<details class="sec" open><summary>🗓️ ${aw+1}. Hafta günlük görevler ve oyun hedefi</summary><div class="controls"><strong>Gün:</strong>${DAYS.map((n,i)=>`<button type="button" class="${i===ad?'':'secondary'}" data-act="admDay" data-i="${i}">${n}</button>`).join('')}</div>${T(P(`plannedGames.${ad}`),cw.plannedGames[ad],`${DAYS[ad]} oyun hedefi`,'number','data-min="0" max="20"')}<h4>Bu gün çözülecek bulmacaları seç</h4><p class="small">İşaretli başlıklar öğrencinin o günkü çalışma çizelgesinde görünür. Günlük adet, üstteki bulmaca başlığı listesinden otomatik alınır.</p><div class="puzzle-grid">${cw.categories.map(c=>`<label class="puzzle"><input type="checkbox" data-daycat="${esc(c.id)}" data-day="${ad}" ${c.assigned!==false&&(cw.dayCategories?.[ad]||cw.categories.map(x=>x.id)).includes(c.id)?'checked':''} ${c.assigned===false?'disabled':''}> ${esc(c.name)} <span class="tag">Günlük: ${quota(c)}</span></label>`).join('')}</div><h4>Diğer günlük görevler</h4><div class="puzzle-grid">${cw.dayTasks[ad].map((t,i)=>`<div class="puzzle">${T(P(`dayTasks.${ad}.${i}.title`),t.title,'Görev başlığı')}${T(P(`dayTasks.${ad}.${i}.desc`),t.desc||'','Açıklama')}<button type="button" class="danger" data-act="delTask" data-i="${i}">Sil</button></div>`).join('')||'<p class="small">Bu gün için görev yok.</p>'}</div><div class="actions"><button type="button" data-act="addTask">+ Görev ekle</button><button type="button" class="secondary" data-act="copyTasks">Bu günün görevlerini haftanın tüm günlerine kopyala</button></div></details>`;
  h+=`<details class="sec"><summary>🎁 Sürpriz bulmaca</summary><label><input type="checkbox" data-path="surprise.enabled" data-type="bool" ${cfg.surprise.enabled?'checked':''}> Sürpriz bulmaca aktif</label>${T('surprise.count',cfg.surprise.count,'Çözülecek bulmaca adedi','number','data-min="1" max="20"')}${TA('surprise.categories',cfg.surprise.categories,'Sürpriz kategorileri (her satıra bir tane)','lines',5)}</details>`;
  h+=`<details class="sec"><summary>🎚️ Zorluk seçenekleri ve kanıt konuları</summary>${TA('difficulties',cfg.difficulties,'Zorluk seçenekleri (her satıra bir tane)','lines',5)}${TA('proofTopics',cfg.proofTopics,'Ekran görüntüsü konu listesi (her satıra bir tane)','lines',8)}</details>`;
@@ -881,19 +890,16 @@ async function arcDown(k){
  document.body.appendChild(el);el.click();el.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 /* ---------- Olaylar ---------- */
-function openAdmin(){$('adminPanel').hidden=false;renderAdmin();$('adminPanel').scrollIntoView({behavior:'smooth'});}
-function adminLogin(){
- if(!cfg.admin.username||!cfg.admin.password){const u=prompt('İlk kurulum — admin kullanıcı adını belirle:');if(!u)return;const pw=prompt('Admin şifresi belirle:');if(!pw)return;cfg.admin.username=u.trim();cfg.admin.password=pw;saveCfg();openAdmin();return;}
- const u=prompt('Admin kullanıcı adı:');if(u===null)return;if(u!==cfg.admin.username){alert('Kullanıcı adı hatalı.');return;}
- const pw=prompt('Admin şifresi:');if(pw===null)return;if(pw!==cfg.admin.password){alert('Şifre hatalı.');return;}
- openAdmin();
-}
+function openAdmin(){if(!currentUser||currentUser.uid!==ADMIN_UID||!isAdmin){alert('Yönetici paneline yalnızca yetkili yönetici hesabı erişebilir. Önce yönetici e-posta ve şifresiyle giriş yap.');$('adminPanel').hidden=true;return;} $('adminPanel').hidden=false;renderAdmin();const st=$('adminSaveStatus');if(st)st.textContent='Değişikliklerini tamamladıktan sonra kaydet.';$('adminPanel').scrollIntoView({behavior:'smooth'});}
+function adminLogin(){if(!currentUser||currentUser.uid!==ADMIN_UID||!isAdmin){alert('Önce yönetici Firebase hesabıyla giriş yapmalısın. Öğrenci hesapları yönetici panelini açamaz.');$('adminPanel').hidden=true;return;}openAdmin();}
+function requireAdminAction(){if(!currentUser||currentUser.uid!==ADMIN_UID||!isAdmin){$('adminPanel').hidden=true;alert('Bu işlem yalnızca yönetici hesabına açıktır.');return false;}return true;}
 function refreshAll(adm){saveCfg();renderStudent();renderProofs();if(adm)renderAdmin();}
 document.addEventListener('click',async e=>{
  const wb=e.target.closest('#weekTabs button[data-week]');
  if(wb){const targetWeek=Number(wb.dataset.week);if(!cfg.weekAccess[targetWeek]){alert('Bu hafta yönetici tarafından kilitlenmiş. Öğretmeninle görüş.');return;}state.activeWeek=targetWeek;saveState();renderStudent();renderProofs();return;}
  const b=e.target.closest('[data-act]');if(!b)return;
  const a=b.dataset.act,i=Number(b.dataset.i),cw=CW(adminWeek);
+ if(b.closest('#adminPanel')&&!requireAdminAction())return;
  switch(a){
   case 'openAllDetails':$('adminBody').querySelectorAll('details').forEach(d=>d.open=true);break;
   case 'closeAllDetails':$('adminBody').querySelectorAll('details').forEach(d=>d.open=false);break;
@@ -916,12 +922,12 @@ document.addEventListener('click',async e=>{
   case 'admAddImages':await addImages([...$('admImgInput').files],adminWeek);break;
   case 'admWeek':adminWeek=i;renderAdmin();break;
   case 'admDay':adminDay=i;renderAdmin();break;
-  case 'addCat':cw.categories.push({id:uid(),name:'Yeni bulmaca',desc:'',quota:5,assigned:true});refreshAll(true);break;
+  case 'addCat':{const id=uid();cw.categories.push({id,name:'Yeni bulmaca',desc:'',quota:5,assigned:true});for(let d=0;d<7;d++){cw.dayCategories[d]=cw.dayCategories[d]||[];cw.dayCategories[d].push(id);}refreshAll(true);break;}
   case 'saveCats':saveCfg();renderStudent();renderAdmin();alert(`${adminWeek+1}. haftanın ${CW(adminWeek).categories.length} bulmaca başlığı kaydedildi. Başlıklar listede kalacak; yeniden yapıştırmana gerek yok.`);break;
   case 'delCat':alert('Başlıklar artık havuzdan silinmiyor. Öğrenci listesinden çıkarmak için seçim işaretini kaldır.');break;
-  case 'toggleCat':cw.categories[i].assigned=cw.categories[i].assigned===false;refreshAll(true);break;
-  case 'bulkCats':{const raw=$('bulkCats')?.value||'';const lines=raw.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);let added=0;for(const line of lines){const parts=line.split('|').map(x=>x.trim());const name=parts[0];if(!name)continue;const exists=cw.categories.some(c=>c.name.toLocaleLowerCase('tr')===name.toLocaleLowerCase('tr'));if(exists)continue;cw.categories.push({id:uid(),name,desc:parts[1]||'',quota:Math.max(0,Number(parts[2])||5),assigned:true});added++;}saveCfg();renderStudent();renderAdmin();alert(`${added} yeni başlık eklendi ve kaydedildi. Var olan aynı adlı başlıklar tekrar eklenmedi. Başlıklar aşağıdaki listede kalıyor; yeniden yapıştırmana gerek yok.`);break;}
-  case 'copyCats':if(confirm(`${adminWeek+1}. haftanın bulmaca listesi diğer 3 haftaya kopyalansın mı? (Onların mevcut listesi değişir.)`)){cfg.weeks.forEach((w,wi)=>{if(wi!==adminWeek)w.categories=clone(cw.categories);});refreshAll(true);}break;
+  case 'toggleCat':{const c=cw.categories[i];c.assigned=c.assigned===false;if(!c.assigned){for(let d=0;d<7;d++)cw.dayCategories[d]=(cw.dayCategories[d]||[]).filter(id=>id!==c.id);}else{for(let d=0;d<7;d++){cw.dayCategories[d]=cw.dayCategories[d]||[];if(!cw.dayCategories[d].includes(c.id))cw.dayCategories[d].push(c.id);}}refreshAll(true);break;}
+  case 'bulkCats':{const raw=$('bulkCats')?.value||'';const lines=raw.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);let added=0;for(const line of lines){const parts=line.split('|').map(x=>x.trim());const name=parts[0];if(!name)continue;const exists=cw.categories.some(c=>c.name.toLocaleLowerCase('tr')===name.toLocaleLowerCase('tr'));if(exists)continue;const id=uid();cw.categories.push({id,name,desc:parts[1]||'',quota:Math.max(0,Number(parts[2])||5),assigned:true});for(let d=0;d<7;d++){cw.dayCategories[d]=cw.dayCategories[d]||[];cw.dayCategories[d].push(id);}added++;}saveCfg();renderStudent();renderAdmin();alert(`${added} yeni başlık eklendi ve kaydedildi. Var olan aynı adlı başlıklar tekrar eklenmedi. Başlıklar aşağıdaki listede kalıyor; yeniden yapıştırmana gerek yok.`);break;}
+  case 'copyCats':if(confirm(`${adminWeek+1}. haftanın bulmaca listesi diğer 3 haftaya kopyalansın mı? (Onların mevcut listesi değişir.)`)){cfg.weeks.forEach((w,wi)=>{if(wi!==adminWeek){w.categories=clone(cw.categories);w.dayCategories=clone(cw.dayCategories);}});refreshAll(true);}break;
   case 'addTask':cw.dayTasks[adminDay].push({id:uid(),title:'Yeni görev',desc:''});refreshAll(true);break;
   case 'delTask':if(confirm('Bu görev silinsin mi?')){cw.dayTasks[adminDay].splice(i,1);refreshAll(true);}break;
   case 'copyTasks':if(confirm(`${DAYS[adminDay]} görevleri bu haftanın tüm günlerine kopyalansın mı? (Diğer günlerin görevleri değişir.)`)){const src=cw.dayTasks[adminDay];for(let d=0;d<7;d++)if(d!==adminDay)cw.dayTasks[d]=clone(src);refreshAll(true);}break;
@@ -950,7 +956,10 @@ document.addEventListener('change',e=>{
   else if(t==='lines'){v=el.value.split('\n').map(s=>s.trim()).filter(Boolean);}
   else v=el.value;
   if(t==='lines'&&!v.length&&(el.dataset.path==='difficulties'||el.dataset.path==='proofTopics')){alert('Bu liste boş olamaz; en az bir satır gerekli.');renderAdmin();return;}
-  setPath(cfg,el.dataset.path,v);saveCfg();renderStudent();renderProofs();return;
+  setPath(cfg,el.dataset.path,v);
+  const assignedMatch=el.dataset.path.match(/^weeks\.(\d+)\.categories\.(\d+)\.assigned$/);
+  if(assignedMatch){const wi=Number(assignedMatch[1]),ci=Number(assignedMatch[2]),w=CW(wi),cat=w.categories[ci];if(cat){for(let di=0;di<7;di++){w.dayCategories[di]=w.dayCategories[di]||[];if(v){if(!w.dayCategories[di].includes(cat.id))w.dayCategories[di].push(cat.id);}else{w.dayCategories[di]=w.dayCategories[di].filter(id=>id!==cat.id);}}}}
+  saveCfg();renderStudent();renderProofs();return;
  }
  if(el.dataset.pf){
   const w=pw(Number(el.dataset.w)),i=Number(el.dataset.i),k=el.dataset.pf;
@@ -989,11 +998,16 @@ $('teacherPlay').addEventListener('click',()=>{
  window.open('https://wa.me/'+encodeURIComponent(cfg.texts.teacherPhone||'')+'?text='+encodeURIComponent(msg),'_blank','noopener,noreferrer');
 });
 $('printWeek').addEventListener('click',()=>{makeReport();window.print();});
-$('resetAll').addEventListener('click',async()=>{if(!confirm('DİKKAT: Bu tarayıcıdaki tüm satranç uygulaması verileri, kanıt görselleri, oyun bağlantıları, ayarlar, öğrenci kayıtları ve arşivler kalıcı olarak silinecek. Önce arşiv/JSON yedeği aldın mı?'))return;if(!confirm('Son onay: Bu işlem geri alınamaz. Her şeyi silmek istiyor musun?'))return;try{localStorage.removeItem(K_STATE);localStorage.removeItem(K_PROOF);localStorage.removeItem(K_CFG);localStorage.removeItem('satranc_active_student_key_v1');const db=await idb();await new Promise((res,rej)=>{const tx=db.transaction('arch','readwrite');tx.objectStore('arch').clear();tx.oncomplete=()=>res();tx.onerror=()=>rej(tx.error);});cfg=defaultConfig();state=normState(null);proofs=normProofs(null);activeStudentKey='';adminWeek=0;adminDay=0;$('adminPanel').hidden=true;renderStudent();renderProofs();alert('Uygulama verileri ve arşivler silindi. Sayfayı yeniden açtığında admin hesabını yeniden kurabilirsin.');}catch(err){alert('Bazı veriler silinemedi: '+err.message+' Tarayıcı izinlerini kontrol et.');}});
+$('resetAll').addEventListener('click',async()=>{if(!requireAdminAction())return;if(!confirm('DİKKAT: Bu tarayıcıdaki tüm satranç uygulaması verileri, kanıt görselleri, oyun bağlantıları, ayarlar, öğrenci kayıtları ve arşivler kalıcı olarak silinecek. Önce arşiv/JSON yedeği aldın mı?'))return;if(!confirm('Son onay: Bu işlem geri alınamaz. Her şeyi silmek istiyor musun?'))return;try{localStorage.removeItem(K_STATE);localStorage.removeItem(K_PROOF);localStorage.removeItem(K_CFG);localStorage.removeItem('satranc_active_student_key_v1');const db=await idb();await new Promise((res,rej)=>{const tx=db.transaction('arch','readwrite');tx.objectStore('arch').clear();tx.oncomplete=()=>res();tx.onerror=()=>rej(tx.error);});cfg=defaultConfig();state=normState(null);proofs=normProofs(null);activeStudentKey='';adminWeek=0;adminDay=0;$('adminPanel').hidden=true;renderStudent();renderProofs();alert('Uygulama verileri ve arşivler silindi. Sayfayı yeniden açtığında admin hesabını yeniden kurabilirsin.');}catch(err){alert('Bazı veriler silinemedi: '+err.message+' Tarayıcı izinlerini kontrol et.');}});
 $('addImages').addEventListener('click',async()=>{await addImages([...$('puzzleImages').files],state.activeWeek);$('puzzleImages').value='';});
 $('adminLogin').addEventListener('click',adminLogin);
-$('closeAdmin').addEventListener('click',()=>{$('adminPanel').hidden=true;});
-renderStudent();renderProofs();initFirebaseAuthUI();
+$('saveAdminAll').addEventListener('click',async()=>{if(!requireAdminAction())return;const btn=$('saveAdminAll'),st=$('adminSaveStatus');btn.disabled=true;if(st)st.textContent='Tüm ayarlar ve seçili öğrencinin değişiklikleri buluta kaydediliyor…';try{saveCfg();saveState();saveProofs();const ok=await cloudSaveNow();if(ok===false)throw new Error('Bulut kaydı başarısız. Firebase durum mesajını kontrol et.');adminHasUnsavedChanges=false;if(st)st.textContent='✓ Tüm değişiklikler kaydedildi.';alert('Yönetici ayarları ve seçili öğrenciye ait değişiklikler kaydedildi.');}catch(e){if(st)st.textContent='Kayıt başarısız: '+e.message;alert('Kayıt yapılamadı: '+e.message);}finally{btn.disabled=false;}});
+$('closeAdmin').addEventListener('click',async()=>{if(adminHasUnsavedChanges&&confirm('Kaydedilmemiş değişiklikler var. Şimdi kaydedilsin mi?')){await $('saveAdminAll').click();} $('adminPanel').hidden=true;});
+$('adminPanel').hidden=true;$('adminLogin').hidden=true;renderStudent();renderProofs();initFirebaseAuthUI();
+// Yönetici paneli sekmeden ayrılınca/başka sayfaya geçince otomatik kapanır. Bekleyen değişiklikler önce kaydedilmeye çalışılır.
+async function autoCloseAdminPanel(){if(!$('adminPanel').hidden){if(adminHasUnsavedChanges&&currentUser&&isAdmin){try{saveCfg();saveState();saveProofs();await cloudSaveNow();adminHasUnsavedChanges=false;}catch(e){console.error('Otomatik yönetici kaydı başarısız:',e);}}$('adminPanel').hidden=true;}}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')autoCloseAdminPanel();});
+window.addEventListener('pagehide',()=>{if(!$('adminPanel').hidden){$('adminPanel').hidden=true;if(adminHasUnsavedChanges&&currentUser&&isAdmin){saveCfg();saveState();saveProofs();cloudSaveNow();}}});
 })();
 </script>
 </body>
