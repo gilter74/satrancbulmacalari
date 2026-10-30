@@ -15,6 +15,9 @@
 body:not(.auth-ready) main.wrap > section{display:none!important}
 body:not(.auth-ready) #firebaseStatus{min-height:220px}
 body.auth-ready #firebaseStatus{display:block}
+body.student-pending main.wrap > section:not(#studentWaitingPanel){display:none!important}
+#studentWaitingPanel{display:none}
+body.student-pending #studentWaitingPanel{display:block!important}
 header{background:linear-gradient(120deg,#10233d,#244f83);color:#fff;padding:28px 18px}
 .wrap{max-width:1200px;margin:auto;padding:0 16px}h1{margin:0 0 8px;font-size:clamp(1.6rem,4vw,2.5rem)}header p{margin:0;color:#e3ebf7}
 main{padding:20px 0 48px}.panel{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px;margin:0 0 18px;box-shadow:0 4px 18px #14243a0b}
@@ -65,7 +68,7 @@ footer{color:var(--muted);text-align:center;padding:20px;font-size:.85rem}
   <p id="authUserText" class="small">Giriş yapılmadı.</p>
   <div id="cloudAdminBox" hidden>
    <h3>Buluttaki öğrenci hesapları</h3>
-   <div class="controls"><button id="cloudRefresh" type="button" class="secondary">Listeyi yenile</button><select id="cloudAccounts" style="min-width:240px"><option value="">Öğrenci hesabı seç…</option></select><button id="cloudLoad" type="button">Seçili hesabı yükle</button><button id="cloudDeleteStudent" type="button" class="danger">Öğrenciyi sil</button><button id="cloudBack" type="button" class="secondary">Kendi hesabıma dön</button></div>
+   <div class="controls"><button id="cloudRefresh" type="button" class="secondary">Listeyi yenile</button><select id="cloudAccounts" style="min-width:240px"><option value="">Öğrenci hesabı seç…</option></select><button id="cloudLoad" type="button">Seçili hesabı yükle</button><button id="approveStudent" type="button" class="gold">Programı onayla ve aç</button><button id="revokeStudent" type="button" class="danger">Programı durdur</button><button id="cloudDeleteStudent" type="button" class="danger">Öğrenciyi sil</button><button id="cloudBack" type="button" class="secondary">Kendi hesabıma dön</button></div>
    <p class="small">Hesap listesi sadece yöneticiye görünür. Seçilen hesaba yapılan kayıtlar o öğrencinin bulut kaydına yazılır.</p>
   </div>
  </section>
@@ -190,7 +193,7 @@ try {
   console.error(firebaseError);
 }
 const ADMIN_UID='5pbxm0qkESVCQzLZCLEbT8hIi6A3';
-let currentUser=null, isAdmin=false, cloudTargetUid=null, cloudSyncTimer=null, cloudApplying=false;
+let currentUser=null, isAdmin=false, cloudTargetUid=null, cloudSyncTimer=null, cloudApplying=false, programApproved=false;
 const cloudStatus=(msg)=>{const el=$('firebaseStatusText');if(el)el.textContent=msg;};
 function cloudDoc(uid){return firestore.collection('accounts').doc(uid);}
 // Firestore disallows arrays nested inside other arrays; preserve app data using a tagged wrapper.
@@ -233,13 +236,13 @@ async function cloudLoad(uid){
   if(uid!==ADMIN_UID){state=normState(null);proofs=normProofs(null);cfg=defaultConfig();activeStudentKey='';localStorage.setItem(K_STATE,JSON.stringify(state));localStorage.setItem(K_PROOF,JSON.stringify(proofs));localStorage.setItem(K_CFG,JSON.stringify(cfg));localStorage.removeItem('satranc_active_student_key_v1');renderStudent();renderProofs();}
   cloudStatus('Yeni bulut kaydı hazırlanıyor…');await cloudSaveNow();return false;
  }
- const raw=snap.data(),d={...raw,state:decodeFirestoreArrays(raw.state),cfg:decodeFirestoreArrays(raw.cfg),proofs:decodeFirestoreArrays(raw.proofs)};cloudApplying=true;
+ const raw=snap.data(),d={...raw,state:decodeFirestoreArrays(raw.state),cfg:decodeFirestoreArrays(raw.cfg),proofs:decodeFirestoreArrays(raw.proofs)};programApproved=d.programApproved===true;cloudApplying=true;
  try{
   if(d.cfg&&typeof d.cfg==='object'){cfg=d.cfg;localStorage.setItem(K_CFG,JSON.stringify(cfg));}
   if(d.state&&typeof d.state==='object'){state=normState(d.state);localStorage.setItem(K_STATE,JSON.stringify(state));}
   if(d.proofs&&typeof d.proofs==='object'){proofs=normProofs(d.proofs);localStorage.setItem(K_PROOF,JSON.stringify(proofs));}
   activeStudentKey=d.studentKey||'';if(activeStudentKey)localStorage.setItem('satranc_active_student_key_v1',activeStudentKey);
-  cloudTargetUid=uid;renderStudent();renderProofs();if(!$('adminPanel').hidden)renderAdmin();
+  cloudTargetUid=uid;renderStudent();renderProofs();if(!$('adminPanel').hidden)renderAdmin();updateProgramGate();
  }finally{cloudApplying=false;}
  cloudStatus('Bulut kaydı yüklendi • '+(d.name||d.email||uid));return true;
 }
@@ -277,7 +280,7 @@ async function refreshCloudAccounts(){
  }catch(e){sel.innerHTML='<option value="">Liste alınamadı</option>';cloudStatus('Hesap listesi alınamadı: '+(e.code||e.message));}
 }
 async function handleAuthUser(user){
- currentUser=user||null;isAdmin=!!user&&user.uid===ADMIN_UID;cloudTargetUid=user?user.uid:null;
+ currentUser=user||null;isAdmin=!!user&&user.uid===ADMIN_UID;cloudTargetUid=user?user.uid:null;programApproved=false;document.body.classList.remove('student-pending');
  document.body.classList.toggle("auth-ready",!!user);
  const logout=$('authLogout'), login=$('authLogin'), reg=$('authRegister');
  if(logout)logout.hidden=!user;if(login)login.hidden=!!user;if(reg)reg.hidden=!!user;
@@ -289,6 +292,7 @@ async function handleAuthUser(user){
  try{
   await cloudLoad(user.uid);
   if(isAdmin)await refreshCloudAccounts();
+  updateProgramGate();
   cloudStatus('Bağlandı: '+(isAdmin?'Yönetici':'Öğrenci')+' • cihazlar arası eşitleme açık');
  }catch(e){cloudStatus('Bulut bağlantısı başarısız: '+(e.code||e.message));console.error(e);}
 }
@@ -306,6 +310,8 @@ function initFirebaseAuthUI(){
  });
  $('authLogout').addEventListener('click',()=>firebaseAuth.signOut());
  $('cloudRefresh').addEventListener('click',refreshCloudAccounts);
+ $('approveStudent').addEventListener('click',()=>setStudentProgramApproval(true));
+ $('revokeStudent').addEventListener('click',()=>setStudentProgramApproval(false));
  $('cloudDeleteStudent').addEventListener('click',deleteSelectedStudent);
  $('cloudLoad').addEventListener('click',async()=>{const id=$('cloudAccounts').value;if(!id)return alert('Önce öğrenci hesabı seç.');if(!confirm('Seçili öğrencinin bulut verisi yüklensin mi? Mevcut ekrandaki son değişiklikler önce kaydedilecek.'))return;await cloudSaveNow();await cloudLoad(id);});
  $('cloudBack').addEventListener('click',async()=>{if(!currentUser)return;await cloudSaveNow();await cloudLoad(currentUser.uid);});
