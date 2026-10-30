@@ -74,6 +74,22 @@ footer{color:var(--muted);text-align:center;padding:20px;font-size:.85rem}
  </section>
 </div>
 
+<section id="studentWaitingPanel" class="panel" aria-live="polite" aria-hidden="true" style="border:2px solid #d9a441;background:#fffaf0">
+ <div style="font-size:2.4rem;text-align:center">🔒</div>
+ <h2 style="text-align:center;color:#8a5a00;font-size:1.5rem">ÖĞRETMEN ONAYI BEKLENİYOR</h2>
+ <p style="text-align:center;font-weight:650">Hesabın oluşturuldu. Bulmaca programına başlayabilmen için öğretmeninin sana ait program ayarlarını tamamlayıp onay vermesi gerekiyor.</p>
+ <div class="card" style="margin-top:16px;padding:16px;background:#fff">
+  <h3>📘 Programın işleyişi</h3>
+  <ol>
+   <li>Öğretmenin çalışma başlangıç tarihini ve sana ait program ayarlarını belirler.</li>
+   <li>Günlük görevlerin, haftalık bulmaca hedeflerin ve çalışma kuralların öğretmenin tarafından düzenlenir.</li>
+   <li>Öğretmenin ayarları tamamlayıp programını onayladığında bulmaca ekranın açılır.</li>
+   <li>Onay verilene kadar bu sayfayı görebilir, ancak bulmaca çözüm alanına geçemezsin.</li>
+  </ol>
+  <p class="small">Hazır olduğunda öğretmeninle iletişime geç. Onay verildiğinde sayfa otomatik olarak açılacaktır.</p>
+ </div>
+</section>
+
 <section class="panel">
 <h2>👤 Öğrenci ve çalışma ayarları</h2>
 <div class="controls">
@@ -193,7 +209,7 @@ try {
   console.error(firebaseError);
 }
 const ADMIN_UID='5pbxm0qkESVCQzLZCLEbT8hIi6A3';
-let currentUser=null, isAdmin=false, cloudTargetUid=null, cloudSyncTimer=null, cloudApplying=false, programApproved=false;
+let currentUser=null, isAdmin=false, cloudTargetUid=null, cloudSyncTimer=null, cloudApplying=false, programApproved=false; let approvalUnsub=null;
 const cloudStatus=(msg)=>{const el=$('firebaseStatusText');if(el)el.textContent=msg;};
 function cloudDoc(uid){return firestore.collection('accounts').doc(uid);}
 // Firestore disallows arrays nested inside other arrays; preserve app data using a tagged wrapper.
@@ -218,9 +234,9 @@ async function cloudSaveNow(){
   const payload=cloudSnapshot(),stamp=payload.updatedAt;delete payload.updatedAt;
   const clean=JSON.parse(JSON.stringify(payload));
   clean.state=encodeFirestoreArrays(clean.state);clean.cfg=encodeFirestoreArrays(clean.cfg);clean.proofs=encodeFirestoreArrays(clean.proofs);clean.updatedAt=stamp;
-  await cloudDoc(cloudTargetUid).set(clean,{merge:true});cloudStatus('Bulut eşitlemesi tamamlandı • '+(isAdmin&&cloudTargetUid!==currentUser.uid?'Seçili öğrenci hesabı':'Bu hesap'));
+  await cloudDoc(cloudTargetUid).set(clean,{merge:true});cloudStatus('Bulut eşitlemesi tamamlandı • '+(isAdmin&&cloudTargetUid!==currentUser.uid?'Seçili öğrenci hesabı':'Bu hesap'));return true;
  }
- catch(e){cloudStatus('Buluta kaydedilemedi: '+(e.code||e.message));console.error('Firestore save error',e);}
+ catch(e){cloudStatus('Buluta kaydedilemedi: '+(e.code||e.message));console.error('Firestore save error',e);return false;}
 }
 function scheduleCloudSave(){
  if(!currentUser||!firestore||!cloudTargetUid||cloudApplying)return;
@@ -228,10 +244,38 @@ function scheduleCloudSave(){
  cloudStatus('Değişiklikler buluta kaydediliyor…');
  cloudSyncTimer=setTimeout(()=>cloudSaveNow(),800);
 }
+function updateProgramGate(){
+ const pending=!!currentUser&&!isAdmin&&programApproved!==true;
+ document.body.classList.toggle('student-pending',pending);
+ const panel=$('studentWaitingPanel');
+ if(panel)panel.setAttribute('aria-hidden',pending?'false':'true');
+}
+async function setStudentProgramApproval(approved){
+ if(!isAdmin||!currentUser||currentUser.uid!==ADMIN_UID||!firestore){alert('Bu işlem yalnızca yönetici tarafından yapılabilir.');return;}
+ const studentUid=$('cloudAccounts')?.value||'';
+ if(!studentUid||studentUid===ADMIN_UID){alert('Önce onay verilecek öğrenci hesabını seç.');return;}
+ if(cloudTargetUid!==studentUid){alert('Önce öğrenciyi seçip “Seçili hesabı yükle” düğmesine bas. Öğrencinin ayarlarını bu hesap üzerinde tamamladıktan sonra onay verebilirsin.');return;}
+ if(approved&&!confirm('Seçili öğrencinin mevcut program ayarları kaydedilecek ve bulmaca programı açılacak. Onaylıyor musun?'))return;
+ try{
+  if(cloudSyncTimer){clearTimeout(cloudSyncTimer);cloudSyncTimer=null;}
+  const saved=await cloudSaveNow();
+  if(saved===false)throw new Error('Öğrenci ayarları buluta kaydedilemedi. Onay verilmedi; bağlantıyı kontrol edip tekrar dene.');
+  await cloudDoc(studentUid).set({
+   programApproved:!!approved,
+   approvalUpdatedAt:firebase.firestore.FieldValue.serverTimestamp(),
+   approvalUpdatedBy:currentUser.uid
+  },{merge:true});
+  cloudStatus(approved?'Öğrenci onaylandı. Programı artık açabilir.':'Öğrencinin programı durduruldu; yeniden onaylanana kadar kilitli.');
+  await refreshCloudAccounts();
+ }catch(e){
+  cloudStatus('Onay işlemi başarısız: '+(e.code||e.message));
+  alert('Onay işlemi başarısız: '+(e.code||e.message));
+ }
+}
 async function cloudLoad(uid){
  const snap=await cloudDoc(uid).get();
  if(!snap.exists){
-  cloudTargetUid=uid;
+  cloudTargetUid=uid;programApproved=false;updateProgramGate();
   // İlk giriş yapan öğrenciye bu cihazda açık kalmış başka bir hesabın verisini taşımayız.
   if(uid!==ADMIN_UID){state=normState(null);proofs=normProofs(null);cfg=defaultConfig();activeStudentKey='';localStorage.setItem(K_STATE,JSON.stringify(state));localStorage.setItem(K_PROOF,JSON.stringify(proofs));localStorage.setItem(K_CFG,JSON.stringify(cfg));localStorage.removeItem('satranc_active_student_key_v1');renderStudent();renderProofs();}
   cloudStatus('Yeni bulut kaydı hazırlanıyor…');await cloudSaveNow();return false;
@@ -280,7 +324,8 @@ async function refreshCloudAccounts(){
  }catch(e){sel.innerHTML='<option value="">Liste alınamadı</option>';cloudStatus('Hesap listesi alınamadı: '+(e.code||e.message));}
 }
 async function handleAuthUser(user){
- currentUser=user||null;isAdmin=!!user&&user.uid===ADMIN_UID;cloudTargetUid=user?user.uid:null;programApproved=false;document.body.classList.remove('student-pending');
+ if(approvalUnsub){approvalUnsub();approvalUnsub=null;}
+ currentUser=user||null;isAdmin=!!user&&user.uid===ADMIN_UID;cloudTargetUid=user?user.uid:null;programApproved=false;document.body.classList.toggle('student-pending',!!user&&!isAdmin);
  document.body.classList.toggle("auth-ready",!!user);
  const logout=$('authLogout'), login=$('authLogin'), reg=$('authRegister');
  if(logout)logout.hidden=!user;if(login)login.hidden=!!user;if(reg)reg.hidden=!!user;
@@ -291,6 +336,7 @@ async function handleAuthUser(user){
  if(!user){cloudStatus('Uygulamayı başlatmak için öğrenci hesabı oluştur veya giriş yap.');return;}
  try{
   await cloudLoad(user.uid);
+  if(!isAdmin){approvalUnsub=cloudDoc(user.uid).onSnapshot(doc=>{programApproved=doc.exists&&doc.data().programApproved===true;updateProgramGate();},err=>{console.error('Onay durumu dinlenemedi:',err);programApproved=false;updateProgramGate();});}
   if(isAdmin)await refreshCloudAccounts();
   updateProgramGate();
   cloudStatus('Bağlandı: '+(isAdmin?'Yönetici':'Öğrenci')+' • cihazlar arası eşitleme açık');
