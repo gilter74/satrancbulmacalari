@@ -59,8 +59,10 @@ footer{color:var(--muted);text-align:center;padding:20px;font-size:.85rem}
   <h2 style="margin-top:0">🔐 Hesap girişi ve cihazlar arası eşitleme</h2>
   <p class="small">Uygulamayı kullanmak için öğrenci hesabı oluşturmalı veya mevcut hesabınla giriş yapmalısın. Giriş yapılmadan çalışma alanı açılmaz. Kayıtlar Firestore ile eşitlenir.</p>
   <div class="controls" id="authFields">
+   <input id="authFirstName" type="text" autocomplete="given-name" placeholder="Öğrenci adı" style="min-width:150px">
+   <input id="authLastName" type="text" autocomplete="family-name" placeholder="Öğrenci soyadı" style="min-width:170px">
    <input id="authEmail" type="email" autocomplete="username" placeholder="E-posta" style="min-width:220px">
-   <input id="authPassword" type="password" autocomplete="current-password" placeholder="Şifre" style="min-width:180px">
+   <input id="authPassword" type="password" autocomplete="new-password" placeholder="Şifre (en az 6 karakter)" style="min-width:200px">
    <button id="authLogin" type="button">Giriş yap</button>
    <button id="authRegister" type="button" class="secondary">Öğrenci hesabı oluştur</button>
    <button id="authLogout" type="button" class="secondary" hidden>Çıkış yap</button>
@@ -69,7 +71,7 @@ footer{color:var(--muted);text-align:center;padding:20px;font-size:.85rem}
   <div id="cloudAdminBox" hidden>
    <h3>Buluttaki öğrenci hesapları</h3>
    <div class="controls"><button id="cloudRefresh" type="button" class="secondary">Listeyi yenile</button><select id="cloudAccounts" style="min-width:240px"><option value="">Öğrenci hesabı seç…</option></select><button id="cloudLoad" type="button">Seçili hesabı yükle</button><button id="approveStudent" type="button" class="gold">Programı onayla ve aç</button><button id="revokeStudent" type="button" class="danger">Programı durdur</button><button id="cloudDeleteStudent" type="button" class="danger">Öğrenciyi sil</button><button id="cloudBack" type="button" class="secondary">Kendi hesabıma dön</button></div>
-   <p class="small">Hesap listesi sadece yöneticiye görünür. Seçilen hesaba yapılan kayıtlar o öğrencinin bulut kaydına yazılır.</p>
+   <p class="small">Hesap listesi sadece yöneticiye görünür. Öğrenciler ad-soyad ve e-posta bilgileriyle listelenir. Seçilen hesaba yapılan kayıtlar o öğrencinin bulut kaydına yazılır.</p>
   </div>
  </section>
 </div>
@@ -93,12 +95,12 @@ footer{color:var(--muted);text-align:center;padding:20px;font-size:.85rem}
 <section class="panel">
 <h2>👤 Öğrenci ve çalışma ayarları</h2>
 <div class="controls">
-<label>Öğrenci adı <input id="studentName" type="text" placeholder="Öğrencinin adı"></label>
-<label>Program başlangıcı <input id="startDate" type="date"></label>
+<label>Öğrenci adı-soyadı <input id="studentName" type="text" placeholder="Kayıt sırasında girilen ad-soyad" readonly></label>
+<label>Program başlangıcı <input id="startDate" type="date" readonly></label>
 <button id="saveSettings" class="secondary">Bilgileri kaydet</button>
 <button id="resetAll" class="danger">Tüm uygulama verilerini sil</button>
 </div>
-<p class="small">Bu sürüm verileri bu tarayıcıda saklar. Başka cihazlarla ortak kullanım için ayrıca sunucu/veritabanı kurulmalıdır.</p>
+<p class="small" id="programPeriodInfo">Program başlangıç tarihi öğretmen onay verdiğinde otomatik belirlenir. Program süresi 30 gündür.</p>
 <div class="notice"><strong>Çalışma kuralı:</strong> <span id="ruleText"></span></div>
 </section>
 
@@ -209,7 +211,7 @@ try {
   console.error(firebaseError);
 }
 const ADMIN_UID='5pbxm0qkESVCQzLZCLEbT8hIi6A3';
-let currentUser=null, isAdmin=false, cloudTargetUid=null, cloudSyncTimer=null, cloudApplying=false, programApproved=false; let approvalUnsub=null;
+let currentUser=null, isAdmin=false, cloudTargetUid=null, cloudTargetEmail="", cloudSyncTimer=null, cloudApplying=false, programApproved=false; let approvalUnsub=null;
 const cloudStatus=(msg)=>{const el=$('firebaseStatusText');if(el)el.textContent=msg;};
 function cloudDoc(uid){return firestore.collection('accounts').doc(uid);}
 // Firestore disallows arrays nested inside other arrays; preserve app data using a tagged wrapper.
@@ -227,7 +229,8 @@ function decodeFirestoreArrays(value){
  }
  return value;
 }
-function cloudSnapshot(){return {state,proofs,cfg,studentKey:activeStudentKey||'',name:(state.name||'').trim()||'Öğrenci',email:currentUser?.email||'',updatedAt:firebase.firestore.FieldValue.serverTimestamp(),updatedAtClient:new Date().toISOString()};}
+function localDateISO(d=new Date()){const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${day}`;}
+function cloudSnapshot(){const fullName=(state.name||'').trim()||'Öğrenci';return {state,proofs,cfg,studentKey:activeStudentKey||'',name:fullName,fullName,email:cloudTargetEmail||(cloudTargetUid===currentUser?.uid?currentUser?.email||'':''),updatedAt:firebase.firestore.FieldValue.serverTimestamp(),updatedAtClient:new Date().toISOString()};}
 async function cloudSaveNow(){
  if(!currentUser||!firestore||!cloudTargetUid||cloudApplying)return;
  try{
@@ -255,13 +258,19 @@ async function setStudentProgramApproval(approved){
  const studentUid=$('cloudAccounts')?.value||'';
  if(!studentUid||studentUid===ADMIN_UID){alert('Önce onay verilecek öğrenci hesabını seç.');return;}
  if(cloudTargetUid!==studentUid){alert('Önce öğrenciyi seçip “Seçili hesabı yükle” düğmesine bas. Öğrencinin ayarlarını bu hesap üzerinde tamamladıktan sonra onay verebilirsin.');return;}
- if(approved&&!confirm('Seçili öğrencinin mevcut program ayarları kaydedilecek ve bulmaca programı açılacak. Onaylıyor musun?'))return;
+ if(approved&&!confirm('Öğrencinin program başlangıcı bugün olarak ayarlanacak. 30 günlük takip süresi başlayacak ve 30. gün sonunda PDF raporu e-posta ile gönderilecek. Onaylıyor musun?'))return;
  try{
   if(cloudSyncTimer){clearTimeout(cloudSyncTimer);cloudSyncTimer=null;}
+  const approvalNow=new Date();
+  if(approved){state.startDate=localDateISO(approvalNow);$('startDate').value=state.startDate;renderStudent();}
   const saved=await cloudSaveNow();
   if(saved===false)throw new Error('Öğrenci ayarları buluta kaydedilemedi. Onay verilmedi; bağlantıyı kontrol edip tekrar dene.');
+  const due=new Date(approvalNow.getTime()+30*24*60*60*1000);
   await cloudDoc(studentUid).set({
    programApproved:!!approved,
+   programStartedAt:approved?firebase.firestore.Timestamp.fromDate(approvalNow):null,
+   reportDueAt:approved?firebase.firestore.Timestamp.fromDate(due):null,
+   reportSentAt:approved?null:firebase.firestore.FieldValue.delete(),
    approvalUpdatedAt:firebase.firestore.FieldValue.serverTimestamp(),
    approvalUpdatedBy:currentUser.uid
   },{merge:true});
@@ -275,15 +284,15 @@ async function setStudentProgramApproval(approved){
 async function cloudLoad(uid){
  const snap=await cloudDoc(uid).get();
  if(!snap.exists){
-  cloudTargetUid=uid;programApproved=false;updateProgramGate();
+  cloudTargetUid=uid;cloudTargetEmail=uid===currentUser?.uid?currentUser?.email||'':'';programApproved=false;updateProgramGate();
   // İlk giriş yapan öğrenciye bu cihazda açık kalmış başka bir hesabın verisini taşımayız.
   if(uid!==ADMIN_UID){state=normState(null);proofs=normProofs(null);cfg=defaultConfig();activeStudentKey='';localStorage.setItem(K_STATE,JSON.stringify(state));localStorage.setItem(K_PROOF,JSON.stringify(proofs));localStorage.setItem(K_CFG,JSON.stringify(cfg));localStorage.removeItem('satranc_active_student_key_v1');renderStudent();renderProofs();}
   cloudStatus('Yeni bulut kaydı hazırlanıyor…');await cloudSaveNow();return false;
  }
- const raw=snap.data(),d={...raw,state:decodeFirestoreArrays(raw.state),cfg:decodeFirestoreArrays(raw.cfg),proofs:decodeFirestoreArrays(raw.proofs)};programApproved=d.programApproved===true;cloudApplying=true;
+ const raw=snap.data(),d={...raw,state:decodeFirestoreArrays(raw.state),cfg:decodeFirestoreArrays(raw.cfg),proofs:decodeFirestoreArrays(raw.proofs)};programApproved=d.programApproved===true;cloudTargetEmail=d.email||'';cloudApplying=true;
  try{
   if(d.cfg&&typeof d.cfg==='object'){cfg=d.cfg;localStorage.setItem(K_CFG,JSON.stringify(cfg));}
-  if(d.state&&typeof d.state==='object'){state=normState(d.state);localStorage.setItem(K_STATE,JSON.stringify(state));}
+  if(d.state&&typeof d.state==='object'){state=normState(d.state);if(!state.name&&d.fullName)state.name=d.fullName;localStorage.setItem(K_STATE,JSON.stringify(state));}else if(d.fullName){state.name=d.fullName;localStorage.setItem(K_STATE,JSON.stringify(state));}
   if(d.proofs&&typeof d.proofs==='object'){proofs=normProofs(d.proofs);localStorage.setItem(K_PROOF,JSON.stringify(proofs));}
   activeStudentKey=d.studentKey||'';if(activeStudentKey)localStorage.setItem('satranc_active_student_key_v1',activeStudentKey);
   cloudTargetUid=uid;renderStudent();renderProofs();if(!$('adminPanel').hidden)renderAdmin();updateProgramGate();
@@ -319,7 +328,7 @@ async function refreshCloudAccounts(){
  const sel=$('cloudAccounts');sel.innerHTML='<option value="">Yükleniyor…</option>';
  try{
   const snap=await firestore.collection('accounts').get();sel.innerHTML='<option value="">Öğrenci hesabı seç…</option>';
-  snap.forEach(doc=>{if(doc.id===currentUser.uid)return;const d=doc.data()||{},o=document.createElement('option');o.value=doc.id;o.textContent=(d.name||d.email||'Öğrenci')+' — '+doc.id.slice(0,8);sel.appendChild(o);});
+  snap.forEach(doc=>{if(doc.id===currentUser.uid)return;const d=doc.data()||{},o=document.createElement('option');o.value=doc.id;o.textContent=(d.fullName||d.name||'Öğrenci')+(d.email?' • '+d.email:'')+' • '+(d.programApproved===true?'ONAYLI':'ONAY BEKLİYOR')+' — '+doc.id.slice(0,8);sel.appendChild(o);});
   if(sel.options.length===1)sel.innerHTML='<option value="">Henüz öğrenci bulut kaydı yok</option>';
  }catch(e){sel.innerHTML='<option value="">Liste alınamadı</option>';cloudStatus('Hesap listesi alınamadı: '+(e.code||e.message));}
 }
@@ -329,7 +338,7 @@ async function handleAuthUser(user){
  document.body.classList.toggle("auth-ready",!!user);
  const logout=$('authLogout'), login=$('authLogin'), reg=$('authRegister');
  if(logout)logout.hidden=!user;if(login)login.hidden=!!user;if(reg)reg.hidden=!!user;
- if($('authEmail'))$('authEmail').disabled=!!user;if($('authPassword'))$('authPassword').disabled=!!user;
+ if($('authEmail'))$('authEmail').disabled=!!user;if($('authPassword'))$('authPassword').disabled=!!user;if($('authFirstName'))$('authFirstName').hidden=!!user;if($('authLastName'))$('authLastName').hidden=!!user;
  $('authUserText').textContent=user?('Giriş: '+(user.email||user.uid)+(isAdmin?' • YÖNETİCİ':' • ÖĞRENCİ')):'Giriş yapılmadı.';
  $('cloudAdminBox').hidden=!isAdmin;
  $('adminLogin').hidden=!!user&&!isAdmin;
@@ -350,9 +359,21 @@ function initFirebaseAuthUI(){
   try{await firebaseAuth.signInWithEmailAndPassword(email,password);}catch(e){alert('Giriş başarısız: '+(e.code||e.message));}
  });
  $('authRegister').addEventListener('click',async()=>{
+  const firstName=$('authFirstName').value.trim(),lastName=$('authLastName').value.trim();
   const email=$('authEmail').value.trim(),password=$('authPassword').value;
+  if(!firstName||!lastName){alert('Öğrencinin adını ve soyadını gir.');return;}
   if(!email||password.length<6){alert('Geçerli e-posta gir ve en az 6 karakterli şifre belirle.');return;}
-  try{await firebaseAuth.createUserWithEmailAndPassword(email,password);}catch(e){alert('Hesap oluşturulamadı: '+(e.code||e.message));}
+  const fullName=(firstName+' '+lastName).replace(/\s+/g,' ').trim();
+  try{
+   const cred=await firebaseAuth.createUserWithEmailAndPassword(email,password);
+   await cred.user.updateProfile({displayName:fullName});
+   state=normState(state);state.name=fullName;state.startDate='';
+   cloudTargetUid=cred.user.uid;cloudTargetEmail=email;programApproved=false;
+   const payload=cloudSnapshot();payload.firstName=firstName;payload.lastName=lastName;payload.fullName=fullName;payload.name=fullName;payload.email=email;payload.programApproved=false;
+   payload.state=encodeFirestoreArrays(payload.state);payload.cfg=encodeFirestoreArrays(payload.cfg);payload.proofs=encodeFirestoreArrays(payload.proofs);
+   await cloudDoc(cred.user.uid).set(payload,{merge:true});
+   $('authFirstName').value='';$('authLastName').value='';
+  }catch(e){alert('Hesap oluşturulamadı veya öğrenci bilgileri kaydedilemedi: '+(e.code||e.message));}
  });
  $('authLogout').addEventListener('click',()=>firebaseAuth.signOut());
  $('cloudRefresh').addEventListener('click',refreshCloudAccounts);
@@ -493,7 +514,7 @@ function dayHtml(wi,di){
 }
 function renderStudent(){
  $('hTitle').textContent=cfg.texts.title;$('hSub').textContent=cfg.texts.sub;$('footerText').textContent=cfg.texts.footer;$('ruleText').textContent=cfg.texts.notice;
- $('studentName').value=state.name||'';$('startDate').value=state.startDate||'';
+ $('studentName').value=state.name||'';$('studentName').readOnly=true;$('startDate').value=state.startDate||'';$('startDate').readOnly=true;const pi=$('programPeriodInfo');if(pi){const st=state.startDate?new Date(state.startDate+'T00:00:00'):null;const end=st?new Date(st.getTime()+30*86400000):null;pi.textContent=st?`Program ${state.startDate} tarihinde başladı. 30 günlük takip bitişi: ${localDateISO(end)}. Başlangıç tarihi öğretmen onayıyla belirlenir.`:'Program başlangıç tarihi öğretmen onay verdiğinde otomatik belirlenir. Program süresi 30 gündür.';}
  document.querySelectorAll('#weekTabs button').forEach(b=>{const ix=Number(b.dataset.week);b.classList.toggle('active',ix===state.activeWeek);b.disabled=!cfg.weekAccess[ix];b.title=cfg.weekAccess[ix]?'Haftayı aç':'Bu hafta yönetici tarafından kilitlendi';});
  if(!cfg.weekAccess[state.activeWeek]){const firstOpen=cfg.weekAccess.findIndex(Boolean);if(firstOpen>=0)state.activeWeek=firstOpen;}
  if(!cfg.weekAccess.some(Boolean)){ $('weekTitle').textContent='🔒 Program yönetici tarafından kilitlendi';$('weekFocus').textContent='Çalışma bölümlerine erişmek için öğretmenin haftaları açmalıdır.';$('puzzleInstruction').textContent='Program şu anda kilitli.';$('puzzleGrid').innerHTML='';$('dayGrid').innerHTML='<div class="notice">Bu programın tüm haftaları yönetici tarafından kilitlendi.</div>';$('progressLabel').textContent='Program kilitli';$('progressBar').style.width='0%';$('taskStat').textContent='—';$('gameStat').textContent='—';$('puzzleStat').textContent='—';return;}
@@ -758,9 +779,9 @@ document.addEventListener('change',e=>{
   saveState();renderStudent();
  }
 });
-$('studentName').addEventListener('input',e=>{state.name=e.target.value;saveState();});
-$('startDate').addEventListener('change',e=>{state.startDate=e.target.value;saveState();});
-$('saveSettings').addEventListener('click',()=>{state.name=$('studentName').value;state.startDate=$('startDate').value;saveState();alert('Öğrenci bilgileri kaydedildi.');});
+$('studentName').addEventListener('input',e=>{if(isAdmin){state.name=e.target.value;saveState();}});
+$('startDate').addEventListener('change',e=>{if(isAdmin){state.startDate=e.target.value;saveState();}});
+$('saveSettings').addEventListener('click',()=>{if(!isAdmin){alert('Öğrenci adı ve program başlangıç tarihi öğretmen tarafından yönetilir.');return;}state.name=$('studentName').value;saveState();alert('Öğrenci bilgileri kaydedildi. Program başlangıç tarihi yalnızca onayla başlatılır.');});
 $('studentReflection').addEventListener('input',e=>{state.weeks[state.activeWeek].studentReflection=e.target.value;saveState();});
 $('teacherEvaluation').addEventListener('input',e=>{state.weeks[state.activeWeek].teacherEvaluation=e.target.value;saveState();});
 $('checkWeek').addEventListener('click',()=>checkWeek(true));
