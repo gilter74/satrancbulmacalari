@@ -9,7 +9,7 @@
 <link rel="apple-touch-icon" sizes="180x180" href="./favicon-180.png">
 <title>Satranç | 4 Haftalık Çalışma Programı</title>
 <style>
-:root{--navy:#13243a;--blue:#2459a9;--gold:#e9b949;--bg:#f3f6fa;--ink:#1e293b;--muted:#64748b;--green:#147d52;--red:#b42318;--line:#d9e1ec}
+:root{--navy:#17345f;--blue:#245fe5;--gold:#ffb547;--bg:#f3f7ff;--ink:#1e293b;--muted:#596b85;--green:#138a70;--red:#b42318;--line:#d7e3f5}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
 /* Hesap açılmadan veya giriş yapılmadan çalışma uygulaması görünmez. */
 body:not(.auth-ready) main.wrap > section{display:none!important}
@@ -75,7 +75,40 @@ body.auth-ready main.wrap>section.student-view.student-view-active{display:block
 @media(max-width:760px){.student-menu-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.menu-card{min-height:78px;padding:10px}.menu-card small{font-size:.7rem}}
 @media(max-width:420px){.student-menu{padding:13px}.student-menu-grid{grid-template-columns:1fr}.menu-card{min-height:66px}}
 
+/* Sayfa başına dön: uzun çalışma sayfalarında kolay gezinme */
+#backToTop{position:fixed;right:20px;bottom:20px;z-index:9999;display:none;align-items:center;gap:8px;padding:12px 16px;border-radius:999px;background:#1769d2;color:#fff;box-shadow:0 6px 22px #10233d35;border:2px solid #fff;font-weight:800}
+#backToTop.visible{display:flex}
+#backToTop:hover{background:#0e4fa8;transform:translateY(-2px)}
+#backToTop:focus-visible{outline:3px solid #ffbf47;outline-offset:3px}
+@media(max-width:520px){#backToTop{right:12px;bottom:12px;padding:11px 14px}#backToTop span{display:none}}
+
 @media print{body{background:white;font-size:11pt}header{padding:12px;background:#fff;color:#111;border-bottom:2px solid #222}header p{color:#333}.wrap{max-width:none;padding:0}.panel{box-shadow:none;break-inside:avoid;margin-bottom:10px;padding:12px}.week-tabs,.actions,.no-print,button,#adminPanel{display:none!important}.day-grid{grid-template-columns:repeat(2,1fr)}.day{break-inside:avoid}.task{margin:4px 0;padding:4px 0}.report{font-size:9pt}footer{display:none}}
+
+/* Renk temasi 1: Canli Mavi + Turuncu (erisilebilir, dengeli) */
+@media screen{
+ body{background:#f3f7ff}
+ header{background:linear-gradient(120deg,#17345f 0%,#245fe5 72%,#3978f4 100%)}
+ button{background:#245fe5}
+ button:hover{background:#174bc2}
+ button.gold{background:#ffb547;color:#26364d}
+ .student-menu{background:linear-gradient(135deg,#ffffff 0%,#edf4ff 100%);border-color:#d4e2fb}
+ .menu-kicker{color:#245fe5}
+ .menu-card{border-color:#d7e3f5}
+ .menu-card:hover{border-color:#7da5f7;box-shadow:0 5px 16px #245fe51a}
+ .menu-card.active{background:#e8f0ff;border-color:#245fe5;box-shadow:0 4px 16px #245fe526}
+ .menu-arrow{color:#3978d8}
+ .student-page-title{border-color:#d7e3f5;color:#245fe5}
+ .week-tabs button{background:#e7efff;color:#17345f}
+ .week-tabs button.active{background:#245fe5;color:#fff}
+ .progress{background:#e3ebf8}
+ .progress span{background:#19b99a}
+ .tag{background:#e8f0ff;color:#214f9e}
+ .stats .stat{background:#f0f5ff}
+ #backToTop{background:#245fe5;border-color:#fff;box-shadow:0 6px 22px #17345f38}
+ #backToTop:hover{background:#174bc2}
+ #backToTop:focus-visible{outline-color:#ffb547}
+}
+
 </style>
 </head>
 <body>
@@ -795,7 +828,11 @@ function build30DayReportHtml(){
   sections.push(`<section>${weekHtml}</section>`);
  }
  const stats=`<div class="stats"><div><b>Görevler</b><strong>${doneTasks}/${totalTasks}</strong></div><div><b>Bulmacalar</b><strong>${donePuzzles}/${totalPuzzles}</strong></div><div><b>Oynanan oyun</b><strong>${totalGames}</strong></div><div><b>Ekran görüntüsü</b><strong>${totalImages}</strong></div><div><b>Geçerli oyun linki</b><strong>${totalValidGames}</strong></div></div>`;
- return `<!doctype html><html lang="tr"><head><meta charset="utf-8"><title>30 Günlük Satranç Çalışma Raporu</title><style>body{font:14px/1.5 Arial,sans-serif;color:#182536;margin:28px}h1,h2,h3{color:#17365d}h1{text-align:center}header{text-align:center;border-bottom:2px solid #d9a441;padding-bottom:14px}.meta,.proof-summary{background:#f3f6fa;padding:12px;border-radius:8px;margin:12px 0}.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:16px 0}.stats div{background:#f3f6fa;padding:10px;border-radius:8px;text-align:center}.stats strong{display:block;font-size:20px}.day{border:1px solid #d9e1ec;border-radius:8px;padding:10px;margin:10px 0;break-inside:avoid}.evidence{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.evidence figure{margin:0;break-inside:avoid;border:1px solid #d9e1ec;padding:6px}.evidence img{width:100%;max-height:240px;object-fit:contain}.evidence figcaption{font-size:11px}.day h3{margin:0}.day ul{margin-top:4px}.week{page-break-before:always}section{margin-bottom:25px}small{color:#596579}button{padding:12px 18px;font-weight:bold}@media print{body{margin:12mm}.no-print{display:none}.day{break-inside:avoid}}</style></head><body><header><h1>♟️ 30 GÜNLÜK SATRANÇ ÇALIŞMA RAPORU</h1><p><b>Öğrenci:</b> ${esc(name)} • <b>Program başlangıcı:</b> ${esc(start)} • <b>Rapor tarihi:</b> ${esc(made)}</p></header><div class="meta"><b>Rapor kapsamı:</b> Onay tarihinden itibaren 30 günlük program • Dört haftanın görev, bulmaca, oyun, kanıt ve değerlendirme kayıtları.</div>${stats}${sections.join('')}<p><b>Genel sonuç:</b> ${doneTasks}/${totalTasks} görev, ${donePuzzles}/${totalPuzzles} bulmaca hedefi, ${totalGames} oyun, ${totalImages} ekran görüntüsü ve ${totalValidGames} geçerli oyun bağlantısı kaydedildi.</p><div class="no-print"><button onclick="window.print()">PDF olarak yazdır / kaydet</button><p>Yazdırma penceresinde hedef olarak “PDF olarak kaydet” seçeneğini kullanın.</p></div></body></html>`;
+ return `<!doctype html><html lang="tr"><head><meta charset="utf-8"><title>30 Günlük Satranç Çalışma Raporu</title><style>body{font:14px/1.5 Arial,sans-serif;color:#182536;margin:28px}h1,h2,h3{color:#17365d}h1{text-align:center}header{text-align:center;border-bottom:2px solid #d9a441;padding-bottom:14px}.meta,.proof-summary{background:#f3f6fa;padding:12px;border-radius:8px;margin:12px 0}.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:16px 0}.stats div{background:#f3f6fa;padding:10px;border-radius:8px;text-align:center}.stats strong{display:block;font-size:20px}.day{border:1px solid #d9e1ec;border-radius:8px;padding:10px;margin:10px 0;break-inside:avoid}.evidence{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.evidence figure{margin:0;break-inside:avoid;border:1px solid #d9e1ec;padding:6px}.evidence img{width:100%;max-height:240px;object-fit:contain}.evidence figcaption{font-size:11px}.day h3{margin:0}.day ul{margin-top:4px}.week{page-break-before:always}section{margin-bottom:25px}small{color:#596579}button{padding:12px 18px;font-weight:bold}@media print{body{margin:12mm}.no-print{display:none}.day{break-inside:avoid}}</style></head><body><header><h1>♟️ 30 GÜNLÜK SATRANÇ ÇALIŞMA RAPORU</h1><p><b>Öğrenci:</b> ${esc(name)} • <b>Program başlangıcı:</b> ${esc(start)} • <b>Rapor tarihi:</b> ${esc(made)}</p></header><div class="meta"><b>Rapor kapsamı:</b> Onay tarihinden itibaren 30 günlük program • Dört haftanın görev, bulmaca, oyun, kanıt ve değerlendirme kayıtları.</div>${stats}${sections.join('')}<p><b>Genel sonuç:</b> ${doneTasks}/${totalTasks} görev, ${donePuzzles}/${totalPuzzles} bulmaca hedefi, ${totalGames} oyun, ${totalImages} ekran görüntüsü ve ${totalValidGames} geçerli oyun bağlantısı kaydedildi.</p><div class="no-print"><button onclick="window.print()">PDF olarak yazdır / kaydet</button><p>Yazdırma penceresinde hedef olarak “PDF olarak kaydet” seçeneğini kullanın.</p></div><button id="backToTop" type="button" aria-label="Sayfanın başına dön" title="Sayfanın başına dön">↑ <span>Sayfa başına dön</span></button>
+<script>
+(()=>{const b=document.getElementById('backToTop');if(!b)return;const update=()=>b.classList.toggle('visible',window.scrollY>360);window.addEventListener('scroll',update,{passive:true});b.addEventListener('click',()=>window.scrollTo({top:0,behavior:'smooth'}));update();})();
+</script>
+</body></html>`;
 }
 function prepare30DayPdf(){
  const win=window.open('','_blank');
@@ -925,7 +962,11 @@ function viewHtml(a,k){
   h+=`<h3>Oyun bağlantıları (${lk.length})</h3><ul>${lk.map(u=>`<li><a href="${/^https?:/i.test(u)?esc(u):'#'}" target="_blank" rel="noopener noreferrer">${esc(u)}</a></li>`).join('')||'<li>—</li>'}</ul>`;
   h+=`<h3>Bulmaca görselleri (${(p.images||[]).length})</h3><div class="g">${(p.images||[]).map(im=>`<div><img src="${im.src}" alt=""><div class="s">${esc(im.topic||'')} • ${esc(im.difficulty||'')}</div></div>`).join('')}</div></div>`;
  });
- return h+'</div></body></html>';
+ return h+'</div><button id="backToTop" type="button" aria-label="Sayfanın başına dön" title="Sayfanın başına dön">↑ <span>Sayfa başına dön</span></button>
+<script>
+(()=>{const b=document.getElementById('backToTop');if(!b)return;const update=()=>b.classList.toggle('visible',window.scrollY>360);window.addEventListener('scroll',update,{passive:true});b.addEventListener('click',()=>window.scrollTo({top:0,behavior:'smooth'}));update();})();
+</script>
+</body></html>';
 }
 async function arcView(k){
  const win=window.open('','_blank');
@@ -1081,6 +1122,10 @@ async function autoCloseAdminPanel(){if(!$('adminPanel').hidden){if(adminHasUnsa
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')autoCloseAdminPanel();});
 window.addEventListener('pagehide',()=>{if(!$('adminPanel').hidden){$('adminPanel').hidden=true;if(adminHasUnsavedChanges&&currentUser&&isAdmin){saveCfg();saveState();saveProofs();cloudSaveNow();}}});
 })();
+</script>
+<button id="backToTop" type="button" aria-label="Sayfanın başına dön" title="Sayfanın başına dön">↑ <span>Sayfa başına dön</span></button>
+<script>
+(()=>{const b=document.getElementById('backToTop');if(!b)return;const update=()=>b.classList.toggle('visible',window.scrollY>360);window.addEventListener('scroll',update,{passive:true});b.addEventListener('click',()=>window.scrollTo({top:0,behavior:'smooth'}));update();})();
 </script>
 </body>
 </html>
