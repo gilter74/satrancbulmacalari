@@ -468,7 +468,8 @@ function defaultConfig(){return{
  },
  weeks:WEEKS.map((w,wi)=>({title:w[0],focus:w[1],plannedGames:[2,2,3,2,2,3,2],
   categories:CATS.map(c=>({id:c[0],name:c[1],desc:c[2],quota:w[2],assigned:true})),
-  dayTasks:PLANS[wi].map(p=>[{id:'focus',title:p[0],desc:p[1]}])}))
+  dayTasks:PLANS[wi].map(p=>[{id:'focus',title:p[0],desc:p[1]}]),
+  dayCategories:Array.from({length:7},()=>CATS.map(c=>c[0]))}))
 };}
 function normCfg(x){
  const d=defaultConfig();if(!x||typeof x!=='object')return d;
@@ -483,7 +484,8 @@ function normCfg(x){
   if(!Array.isArray(w.categories))w.categories=[];
   if(!Array.isArray(w.plannedGames))w.plannedGames=[];
   if(!Array.isArray(w.dayTasks))w.dayTasks=[];
-  for(let i=0;i<7;i++){const p=Number(w.plannedGames[i]);w.plannedGames[i]=Number.isFinite(p)?p:2;if(!Array.isArray(w.dayTasks[i]))w.dayTasks[i]=[];}
+  if(!Array.isArray(w.dayCategories))w.dayCategories=Array.from({length:7},()=>w.categories.map(c=>c.id));
+  for(let i=0;i<7;i++){const p=Number(w.plannedGames[i]);w.plannedGames[i]=Number.isFinite(p)?p:2;if(!Array.isArray(w.dayTasks[i]))w.dayTasks[i]=[];if(!Array.isArray(w.dayCategories[i]))w.dayCategories[i]=w.categories.map(c=>c.id);w.dayCategories[i]=w.dayCategories[i].filter(id=>w.categories.some(c=>c.id===id));}
  });
  return c;
 }
@@ -528,17 +530,19 @@ function saveProofs(){try{localStorage.setItem(K_PROOF,JSON.stringify(proofs));}
 /* ---------- Yardımcılar ---------- */
 const CW=wi=>cfg.weeks[wi];
 function assignedCats(w){return (w.categories||[]).filter(c=>c.assigned!==false);}
+function dayCats(wi,di){const w=CW(wi),ids=w.dayCategories?.[di]||w.categories.map(c=>c.id);return assignedCats(w).filter(c=>ids.includes(c.id));}
+function catWeeklyGoal(wi,c){return DAYS.reduce((n,_,di)=>n+(dayCats(wi,di).some(x=>x.id===c.id)?quota(c):0),0);}
 const quota=c=>Math.max(0,Number(c.quota)||0);
 const sumCat=(wi,id)=>state.weeks[wi].days.reduce((s,d)=>s+(Number(d.puzzles[id])||0),0);
 function getSur(d){const n=Math.max(1,Number(cfg.surprise.count)||5);const s=d.surprise;s.checks=Array.from({length:n},(_,i)=>!!s.checks[i]);return s;}
-function dailyPuzzlesDone(wi,di){const d=state.weeks[wi].days[di];return CW(wi).categories.every(c=>(Number(d.puzzles[c.id])||0)>=quota(c));}
+function dailyPuzzlesDone(wi,di){const d=state.weeks[wi].days[di],cats=dayCats(wi,di);return cats.every(c=>(Number(d.puzzles[c.id])||0)>=quota(c));}
 function surDone(d){if(!cfg.surprise.enabled||!cfg.surprise.categories.length)return true;const s=getSur(d);return !!s.category&&s.checks.every(Boolean);}
 function dayTasksComplete(wi,di){const d=state.weeks[wi].days[di];return CW(wi).dayTasks[di].every(t=>!!d.tasks[t.id])&&dailyPuzzlesDone(wi,di)&&surDone(d);}
 const defaultDiff=()=>cfg.difficulties.includes('Normal')?'Normal':cfg.difficulties[0];
 function diffOptions(sel){return [...new Set([sel,...cfg.difficulties])].map(x=>`<option ${x===sel?'selected':''}>${esc(x)}</option>`).join('');}
 /* ---------- Öğrenci ekranı ---------- */
 function dayHtml(wi,di){
- const w=state.weeks[wi],d=w.days[di],cw=CW(wi),tasks=cw.dayTasks[di],cats=cw.categories,planned=cw.plannedGames[di],minG=cfg.minGamesPerDay,dd=defaultDiff();
+ const w=state.weeks[wi],d=w.days[di],cw=CW(wi),tasks=cw.dayTasks[di],cats=dayCats(wi,di),planned=cw.plannedGames[di],minG=cfg.minGamesPerDay,dd=defaultDiff();
  const taskRows=tasks.map(t=>{const df=d.tasks[t.id+'_difficulty']||dd,id=esc(t.id);
   return `<div class="task"><input type="checkbox" id="c-${di}-${id}" data-st="task" data-day="${di}" data-task="${id}" ${d.tasks[t.id]?'checked':''}><label for="c-${di}-${id}"><span class="task-title">${esc(t.title)}</span><span class="task-desc">${esc(t.desc||'')}</span></label><select aria-label="${esc(t.title)} zorluk" data-st="diff" data-day="${di}" data-task="${id}">${diffOptions(df)}</select></div>`;}).join('');
  const puzRow=cats.length?`<div class="task"><input type="checkbox" disabled ${dailyPuzzlesDone(wi,di)?'checked':''}><label><span class="task-title">Günlük bulmaca hedefini tamamla</span><span class="task-desc">Aşağıdaki günlük konu dağılımındaki sayıları tamamla.</span></label></div>`:'';
@@ -560,12 +564,12 @@ function renderStudent(){
  $('weekTitle').textContent=cw.title;$('weekFocus').textContent=cw.focus;
  const visibleCats=assignedCats(cw);const daily=visibleCats.reduce((s,c)=>s+quota(c),0);
  $('puzzleInstruction').textContent=`Günlük toplam ${daily}, haftalık toplam ${daily*7} bulmaca hedeflenir.`;
- $('puzzleGrid').innerHTML=visibleCats.map(c=>{const goal=quota(c)*7,val=sumCat(wi,c.id);return `<div class="puzzle"><label>${esc(c.name)} <span class="tag">Haftalık hedef: ${goal}</span></label><div class="small">${esc(c.desc||'')}</div><p><strong>${Math.min(val,goal)} / ${goal}</strong> tamamlandı</p></div>`;}).join('')||'<p class="small">Bu hafta için bulmaca kategorisi tanımlı değil.</p>';
+ $('puzzleGrid').innerHTML=visibleCats.map(c=>{const goal=catWeeklyGoal(wi,c),val=sumCat(wi,c.id);return `<div class="puzzle"><label>${esc(c.name)} <span class="tag">Haftalık hedef: ${goal}</span></label><div class="small">${esc(c.desc||'')}</div><p><strong>${Math.min(val,goal)} / ${goal}</strong> tamamlandı</p></div>`;}).join('')||'<p class="small">Bu hafta için bulmaca kategorisi tanımlı değil.</p>';
  $('dayGrid').innerHTML=DAYS.map((_,di)=>dayHtml(wi,di)).join('');
  $('studentReflection').value=w.studentReflection||'';$('teacherEvaluation').value=w.teacherEvaluation||'';
  let total=0,done=0,games=0,pDone=0,pGoal=0;
- for(let di=0;di<7;di++){const d=w.days[di],tl=cw.dayTasks[di];const ac=assignedCats(cw);total+=tl.length+(ac.length?1:0);done+=tl.filter(t=>d.tasks[t.id]).length+(ac.length&&dailyPuzzlesDone(wi,di)?1:0);games+=Number(d.games)||0;}
- assignedCats(cw).forEach(c=>{const g=quota(c)*7;pGoal+=g;pDone+=Math.min(g,sumCat(wi,c.id));});
+ for(let di=0;di<7;di++){const d=w.days[di],tl=cw.dayTasks[di];const ac=assignedCats(cw);const dc=dayCats(wi,di);total+=tl.length+(dc.length?1:0);done+=tl.filter(t=>d.tasks[t.id]).length+(dc.length&&dailyPuzzlesDone(wi,di)?1:0);games+=Number(d.games)||0;}
+ assignedCats(cw).forEach(c=>{const g=catWeeklyGoal(wi,c);pGoal+=g;pDone+=Math.min(g,sumCat(wi,c.id));});
  const parts=[total?done/total:null,pGoal?pDone/pGoal:null].filter(x=>x!==null),pct=parts.length?Math.round(parts.reduce((s,x)=>s+x,0)/parts.length*100):0;
  $('progressLabel').textContent=pct+'% tamamlandı';$('progressBar').style.width=pct+'%';
  $('taskStat').textContent=`${done} / ${total}`;$('gameStat').textContent=games;$('puzzleStat').textContent=`${pDone} / ${pGoal}`;
@@ -574,7 +578,7 @@ function renderStudent(){
 }
 function evaluate(wi){
  const w=state.weeks[wi],cw=CW(wi),minG=Number(cfg.minGamesPerDay)||0;
- const puzzleMissing=cw.categories.map(c=>({name:c.name,missing:quota(c)*7-sumCat(wi,c.id)})).filter(x=>x.missing>0);
+ const puzzleMissing=assignedCats(cw).map(c=>({name:c.name,missing:catWeeklyGoal(wi,c)-sumCat(wi,c.id)})).filter(x=>x.missing>0);
  let taskOnlyDays=0;const lowGameDays=[];
  w.days.forEach((d,i)=>{const low=(Number(d.games)||0)<minG;if(low)lowGameDays.push(DAYS[i]);else if(!dayTasksComplete(wi,i))taskOnlyDays++;});
  const totalGames=w.days.reduce((s,d)=>s+(Number(d.games)||0),0);
@@ -592,7 +596,7 @@ function checkWeek(showAlert){
 function makeReport(){
  const wi=state.activeWeek,w=state.weeks[wi],cw=CW(wi),r=evaluate(wi),name=(state.name||'').trim()||'Öğrenci belirtilmedi';
  const L=[`♟️ SATRANÇ ÇALIŞMA RAPORU — ${wi+1}. HAFTA`,`Öğrenci: ${name}`,`Program başlangıcı: ${state.startDate||'Belirtilmedi'}`,`Hafta: ${cw.title}`,`Oynanan toplam oyun: ${r.totalGames}`,`Bulmaca durumu: ${r.puzzleMissing.length?'EKSİK':'TAMAM'}`,'','BULMACA HEDEFLERİ:'];
- cw.categories.forEach(c=>{const goal=quota(c)*7;if(!goal)return;const val=sumCat(wi,c.id);L.push(`• ${c.name}: ${Math.min(val,goal)}/${goal}${val>=goal?' ✓':' — eksik '+(goal-val)}`);});
+ assignedCats(cw).forEach(c=>{const goal=catWeeklyGoal(wi,c);if(!goal)return;const val=sumCat(wi,c.id);L.push(`• ${c.name}: ${Math.min(val,goal)}/${goal}${val>=goal?' ✓':' — eksik '+(goal-val)}`);});
  L.push('','GÜNLÜK TAKİP:');
  DAYS.forEach((day,i)=>{const d=w.days[i],tl=cw.dayTasks[i],dn=tl.filter(t=>d.tasks[t.id]).length,s=getSur(d);
   L.push(`${day}: ${dn}/${tl.length} görev, ${Number(d.games)||0} oyun; ${cw.categories.map(c=>`${c.name} ${Number(d.puzzles[c.id])||0}/${quota(c)}`).join(', ')}${d.note?` — Öğrenci notu: ${d.note}`:''}${s.category?` — Sürpriz: ${s.category} (${s.checks.filter(Boolean).length}/${s.checks.length})`:''}`);});
@@ -794,8 +798,8 @@ function renderAdmin(){
  let h=`<div class="controls"><strong>Yönetici görünümü:</strong><button type="button" class="secondary" data-act="openAllDetails">Tüm bölümleri aç</button><button type="button" class="secondary" data-act="closeAllDetails">Tüm bölümleri kapat</button></div><div class="controls" style="margin-top:10px"><strong>Düzenlenen hafta:</strong>${[0,1,2,3].map(i=>`<button type="button" class="${i===aw?'':'secondary'}" data-act="admWeek" data-i="${i}">${i+1}. Hafta</button><button type="button" class="${cfg.weekAccess[i]?'gold':'danger'}" data-act="toggleWeek" data-i="${i}">${i+1}. hafta ${cfg.weekAccess[i]?'açık':'kilitli'}</button>`).join('')}<button type="button" data-act="unlockAllWeeks">Tüm haftaları aç</button><button type="button" class="danger" data-act="lockAllWeeks">Tüm haftaları kilitle</button></div>`;
  h+=`<details class="sec" open><summary>📝 Sayfa metinleri ve genel kurallar</summary>${T('texts.title',cfg.texts.title,'Sayfa başlığı')}${T('texts.sub',cfg.texts.sub,'Alt başlık')}${TA('texts.notice',cfg.texts.notice,'Çalışma kuralı metni')}${T('texts.footer',cfg.texts.footer,'Alt bilgi')}${T('texts.teacherPhone',cfg.texts.teacherPhone,'Öğretmen WhatsApp numarası (ülke kodlu, örn. 905...)')}<div class="controls">${T('minGamesPerDay',cfg.minGamesPerDay,'Günlük en az oyun','number','data-min="0" max="20"')}${T('minScreenshots',cfg.minScreenshots,'Haftalık en az ekran görüntüsü','number','data-min="1" max="100"')}${T('minGameLinks',cfg.minGameLinks,'Haftalık en az oyun bağlantısı','number','data-min="1" max="100"')}</div></details>`;
  h+=`<details class="sec" open><summary>📅 ${aw+1}. Hafta başlığı ve odağı</summary>${T(P('title'),cw.title,'Hafta başlığı')}${TA(P('focus'),cw.focus,'Hafta açıklaması / amaç')}</details>`;
- h+=`<details class="sec" open><summary>🧩 ${aw+1}. Hafta bulmaca başlıkları ve günlük adetleri</summary><p class="small">Başlık ekle, sil, adını ve günlük adedini değiştir. Haftalık hedef = günlük adet × 7.</p><div class="puzzle-grid">${cw.categories.map((c,i)=>`<div class="puzzle">${T(P(`categories.${i}.name`),c.name,'Başlık')}${T(P(`categories.${i}.desc`),c.desc||'','Açıklama')}${T(P(`categories.${i}.quota`),c.quota,'Günlük adet','number','data-min="0" max="500"')}<label class="small"><input type="checkbox" data-path="${P(`categories.${i}.assigned`)}" data-type="bool" ${c.assigned!==false?'checked':''}> Bu öğrenciye ata / listesinde göster</label><button type="button" class="secondary" data-act="toggleCat" data-i="${i}">${c.assigned===false?'Öğrenci listesine ekle':'Öğrenci listesinden çıkar'}</button></div>`).join('')}</div><div class="actions"><button type="button" data-act="addCat">+ Bulmaca başlığı ekle</button><button type="button" class="secondary" data-act="copyCats">Bu listeyi diğer haftalara kopyala</button></div><label class="small">Toplu başlık ekle (her satıra bir başlık; istersen Başlık | Açıklama | Günlük adet biçiminde yapıştır)<textarea id="bulkCats" rows="5" class="full" placeholder="Çatal | Bir hamlede iki hedefe saldır. | 5&#10;1 hamlede mat | Rakip şahı tek hamlede mat et. | 5"></textarea></label><div class="actions"><button type="button" data-act="bulkCats">Başlıkları ekle ve kaydet</button><button type="button" class="gold" data-act="saveCats">Bu haftanın başlık listesini kaydet</button></div><p id="catsSaveStatus" class="small" role="status">Kayıtlı başlık sayısı: ${cw.categories.length}. Başlıklar otomatik kaydedilir; düğmeyle ayrıca kaydı onaylayabilirsin.</p></details>`;
- h+=`<details class="sec" open><summary>🗓️ ${aw+1}. Hafta günlük görevler ve oyun hedefi</summary><div class="controls"><strong>Gün:</strong>${DAYS.map((n,i)=>`<button type="button" class="${i===ad?'':'secondary'}" data-act="admDay" data-i="${i}">${n}</button>`).join('')}</div>${T(P(`plannedGames.${ad}`),cw.plannedGames[ad],`${DAYS[ad]} oyun hedefi`,'number','data-min="0" max="20"')}<div class="puzzle-grid">${cw.dayTasks[ad].map((t,i)=>`<div class="puzzle">${T(P(`dayTasks.${ad}.${i}.title`),t.title,'Görev başlığı')}${T(P(`dayTasks.${ad}.${i}.desc`),t.desc||'','Açıklama')}<button type="button" class="danger" data-act="delTask" data-i="${i}">Sil</button></div>`).join('')||'<p class="small">Bu gün için görev yok.</p>'}</div><div class="actions"><button type="button" data-act="addTask">+ Görev ekle</button><button type="button" class="secondary" data-act="copyTasks">Bu günün görevlerini haftanın tüm günlerine kopyala</button></div></details>`;
+ h+=`<details class="sec" open><summary>🧩 ${aw+1}. Hafta bulmaca başlıkları ve günlük adetleri</summary><p class="small">Başlıkları listede tut; yanındaki tiki kaldırırsan öğrenci programında görünmez. Günlük adet, aşağıdaki gün çizelgesine otomatik aktarılır.</p><div class="puzzle-grid">${cw.categories.map((c,i)=>`<div class="puzzle">${T(P(`categories.${i}.name`),c.name,'Başlık')}${T(P(`categories.${i}.desc`),c.desc||'','Açıklama')}${T(P(`categories.${i}.quota`),c.quota,'Günlük adet','number','data-min="0" max="500"')}<label class="small"><input type="checkbox" data-path="${P(`categories.${i}.assigned`)}" data-type="bool" ${c.assigned!==false?'checked':''}> Bu öğrenciye ata / listesinde göster</label></div>`).join('')}</div><div class="actions"><button type="button" data-act="addCat">+ Bulmaca başlığı ekle</button><button type="button" class="secondary" data-act="copyCats">Bu listeyi diğer haftalara kopyala</button></div><label class="small">Toplu başlık ekle (her satıra bir başlık; istersen Başlık | Açıklama | Günlük adet biçiminde yapıştır)<textarea id="bulkCats" rows="5" class="full" placeholder="Çatal | Bir hamlede iki hedefe saldır. | 5&#10;1 hamlede mat | Rakip şahı tek hamlede mat et. | 5"></textarea></label><div class="actions"><button type="button" data-act="bulkCats">Başlıkları ekle ve kaydet</button><button type="button" class="gold" data-act="saveCats">Bu haftanın başlık listesini kaydet</button></div><p id="catsSaveStatus" class="small" role="status">Kayıtlı başlık sayısı: ${cw.categories.length}. Başlıklar otomatik kaydedilir; düğmeyle ayrıca kaydı onaylayabilirsin.</p></details>`;
+ h+=`<details class="sec" open><summary>🗓️ ${aw+1}. Hafta günlük görevler ve oyun hedefi</summary><div class="controls"><strong>Gün:</strong>${DAYS.map((n,i)=>`<button type="button" class="${i===ad?'':'secondary'}" data-act="admDay" data-i="${i}">${n}</button>`).join('')}</div>${T(P(`plannedGames.${ad}`),cw.plannedGames[ad],`${DAYS[ad]} oyun hedefi`,'number','data-min="0" max="20"')}<h4>Bu gün çözülecek bulmacaları seç</h4><p class="small">İşaretli başlıklar öğrencinin o günkü çalışma çizelgesinde görünür. Günlük adet, üstteki bulmaca başlığı listesinden otomatik alınır.</p><div class="puzzle-grid">${cw.categories.map(c=>`<label class="puzzle"><input type="checkbox" data-daycat="${esc(c.id)}" data-day="${ad}" ${c.assigned!==false&&(cw.dayCategories?.[ad]||cw.categories.map(x=>x.id)).includes(c.id)?'checked':''} ${c.assigned===false?'disabled':''}> ${esc(c.name)} <span class="tag">Günlük: ${quota(c)}</span></label>`).join('')}</div><h4>Diğer günlük görevler</h4><div class="puzzle-grid">${cw.dayTasks[ad].map((t,i)=>`<div class="puzzle">${T(P(`dayTasks.${ad}.${i}.title`),t.title,'Görev başlığı')}${T(P(`dayTasks.${ad}.${i}.desc`),t.desc||'','Açıklama')}<button type="button" class="danger" data-act="delTask" data-i="${i}">Sil</button></div>`).join('')||'<p class="small">Bu gün için görev yok.</p>'}</div><div class="actions"><button type="button" data-act="addTask">+ Görev ekle</button><button type="button" class="secondary" data-act="copyTasks">Bu günün görevlerini haftanın tüm günlerine kopyala</button></div></details>`;
  h+=`<details class="sec"><summary>🎁 Sürpriz bulmaca</summary><label><input type="checkbox" data-path="surprise.enabled" data-type="bool" ${cfg.surprise.enabled?'checked':''}> Sürpriz bulmaca aktif</label>${T('surprise.count',cfg.surprise.count,'Çözülecek bulmaca adedi','number','data-min="1" max="20"')}${TA('surprise.categories',cfg.surprise.categories,'Sürpriz kategorileri (her satıra bir tane)','lines',5)}</details>`;
  h+=`<details class="sec"><summary>🎚️ Zorluk seçenekleri ve kanıt konuları</summary>${TA('difficulties',cfg.difficulties,'Zorluk seçenekleri (her satıra bir tane)','lines',5)}${TA('proofTopics',cfg.proofTopics,'Ekran görüntüsü konu listesi (her satıra bir tane)','lines',8)}</details>`;
  h+=`<details class="sec"><summary>📸 Haftalık kanıt ve oyun bağlantıları yönetimi</summary><div id="admProofBox"></div></details>`;
@@ -935,6 +939,9 @@ document.addEventListener('change',e=>{
  if(el.id==='arcFile'){
   const f=el.files[0];if(!f)return;
   const r=new FileReader();r.onload=()=>{try{const a=JSON.parse(r.result);if(!a||!a.state||!a.config)throw new Error('geçersiz');loadWithConfirm(a);}catch(err){alert('Bu dosya geçerli bir arşiv değil.');}el.value='';};r.readAsText(f);return;
+ }
+ if(el.dataset.daycat){
+  const wi=adminWeek,di=Number(el.dataset.day),id=el.dataset.daycat;const list=CW(wi).dayCategories[di]||(CW(wi).dayCategories[di]=CW(wi).categories.map(c=>c.id));if(el.checked){if(!list.includes(id))list.push(id);}else{CW(wi).dayCategories[di]=list.filter(x=>x!==id);}saveCfg();renderStudent();renderAdmin();return;
  }
  if(el.dataset.path){
   const t=el.dataset.type;let v;
