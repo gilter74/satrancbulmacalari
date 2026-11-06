@@ -123,9 +123,9 @@ body.auth-ready main.wrap>section.student-view.student-view-active{display:block
   <h2 style="margin-top:0">🔐 Hesap girişi ve cihazlar arası eşitleme</h2>
   <p class="small">Uygulamayı kullanmak için öğrenci hesabı oluşturmalı veya mevcut hesabınla giriş yapmalısın. Giriş yapılmadan çalışma alanı açılmaz. Kayıtlar Firestore ile eşitlenir.</p>
   <div class="controls" id="authFields">
-   <input id="authFirstName" type="text" autocomplete="given-name" placeholder="Öğrenci adı" style="min-width:150px">
-   <input id="authLastName" type="text" autocomplete="family-name" placeholder="Öğrenci soyadı" style="min-width:170px">
-   <input id="authEmail" type="email" autocomplete="username" placeholder="E-posta" style="min-width:220px">
+   <input id="authFirstName" type="text" autocomplete="given-name" placeholder="Öğrenci adı *" aria-label="Öğrenci adı (zorunlu)" required style="min-width:150px">
+   <input id="authLastName" type="text" autocomplete="family-name" placeholder="Öğrenci soyadı *" aria-label="Öğrenci soyadı (zorunlu)" required style="min-width:170px">
+   <input id="authEmail" type="email" autocomplete="username" placeholder="E-posta *" aria-label="E-posta adresi (zorunlu)" required style="min-width:220px">
    <input id="authPassword" type="password" autocomplete="new-password" placeholder="Şifre (en az 6 karakter)" style="min-width:200px">
    <button id="authLogin" type="button">Giriş yap</button>
    <button id="authRegister" type="button" class="secondary">Öğrenci hesabı oluştur</button>
@@ -488,8 +488,10 @@ function initFirebaseAuthUI(){
  $('authRegister').addEventListener('click',async()=>{
   const firstName=$('authFirstName').value.trim(),lastName=$('authLastName').value.trim();
   const email=$('authEmail').value.trim(),password=$('authPassword').value;
-  if(!firstName||!lastName){alert('Öğrencinin adını ve soyadını gir.');return;}
-  if(!email||password.length<6){alert('Geçerli e-posta gir ve en az 6 karakterli şifre belirle.');return;}
+  if(!firstName||!lastName){alert('Hesap oluşturmak için öğrencinin adı ve soyadı zorunludur.');(!firstName?$('authFirstName'):$('authLastName')).focus();return;}
+  const emailInput=$('authEmail');
+  if(!email||!emailInput.checkValidity()){alert('Hesap oluşturmak için geçerli bir e-posta adresi zorunludur.');emailInput.focus();return;}
+  if(password.length<6){alert('En az 6 karakterli bir şifre belirle.');$('authPassword').focus();return;}
   const fullName=(firstName+' '+lastName).replace(/\s+/g,' ').trim();
   try{
    const cred=await firebaseAuth.createUserWithEmailAndPassword(email,password);
